@@ -1,0 +1,51 @@
+import "server-only";
+import { z } from "zod";
+
+/**
+ * Validated server environment. Parsed lazily (on first use) so `next build`
+ * does not require runtime secrets, but a misconfiguration fails loudly on the first request.
+ */
+const envSchema = z
+  .object({
+    NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
+    DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
+
+    LLM_PROVIDER: z.enum(["anthropic", "openai", "mock"]).optional(),
+    ANTHROPIC_API_KEY: z.string().min(1).optional(),
+    ANTHROPIC_MODEL: z.string().min(1).default("claude-haiku-5-5"),
+    OPENAI_API_KEY: z.string().min(1).optional(),
+    OPENAI_MODEL: z.string().min(1).default("gpt-5-mini"),
+    LLM_TIMEOUT_MS: z.coerce.number().int().positive().default(20_000),
+
+    RATE_LIMIT_AI_PER_MINUTE: z.coerce.number().int().positive().default(10),
+  })
+  .transform((env) => ({
+    ...env,
+    // Pick a provider automatically when not set explicitly: real key wins, mock otherwise.
+    LLM_PROVIDER:
+      env.LLM_PROVIDER ??
+      (env.ANTHROPIC_API_KEY ? "anthropic" : env.OPENAI_API_KEY ? "openai" : "mock"),
+  }))
+  .superRefine((env, ctx) => {
+    if (env.LLM_PROVIDER === "anthropic" && !env.ANTHROPIC_API_KEY) {
+      ctx.addIssue({ code: "custom", message: "ANTHROPIC_API_KEY is required for LLM_PROVIDER=anthropic" });
+    }
+    if (env.LLM_PROVIDER === "openai" && !env.OPENAI_API_KEY) {
+      ctx.addIssue({ code: "custom", message: "OPENAI_API_KEY is required for LLM_PROVIDER=openai" });
+    }
+  });
+
+export type Env = z.infer<typeof envSchema>;
+
+let cached: Env | undefined;
+
+export function getEnv(): Env {
+  if (cached) return cached;
+  const parsed = envSchema.safeParse(process.env);
+  if (!parsed.success) {
+    const issues = parsed.error.issues.map((i) => `${i.path.join(".") || "env"}: ${i.message}`);
+    throw new Error(`Invalid server configuration:\n- ${issues.join("\n- ")}`);
+  }
+  cached = parsed.data;
+  return cached;
+}
