@@ -10,7 +10,15 @@ export interface RateLimitResult {
   retryAfterSeconds: number;
 }
 
-export function createRateLimiter({ limit, windowMs, now = Date.now }: { limit: number; windowMs: number; now?: () => number }) {
+export function createRateLimiter({
+  limit,
+  windowMs,
+  now = Date.now,
+}: {
+  limit: number;
+  windowMs: number;
+  now?: () => number;
+}) {
   const buckets = new Map<string, { count: number; resetAt: number }>();
 
   return {

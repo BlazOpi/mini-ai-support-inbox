@@ -37,7 +37,11 @@ function wrapUntrusted(body: string): string {
 
 /** Names are untrusted too: keep them on one line and strip anything tag-like. */
 function sanitizeName(name: string): string {
-  return name.replace(/[<>\r\n]/g, " ").replace(/\s+/g, " ").trim().slice(0, 120);
+  return name
+    .replace(/[<>\r\n]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 120);
 }
 
 export function buildClassifyPrompt(message: string): string {

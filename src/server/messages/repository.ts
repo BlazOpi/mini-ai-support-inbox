@@ -21,7 +21,10 @@ export interface AiResult {
  */
 export function createMessageRepository(db: Database) {
   const selectWithReply = () =>
-    db.select({ message: messages, reply: replies }).from(messages).leftJoin(replies, eq(replies.messageId, messages.id));
+    db
+      .select({ message: messages, reply: replies })
+      .from(messages)
+      .leftJoin(replies, eq(replies.messageId, messages.id));
 
   return {
     async insert(input: CreateMessageInput): Promise<MessageRow> {

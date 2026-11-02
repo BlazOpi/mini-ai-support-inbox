@@ -214,7 +214,9 @@ export function ReplyPanel({ message }: { message: MessageDto }) {
         {message.reply?.edited && (
           <details className="mt-4 text-sm">
             <summary className="cursor-pointer text-slate-500 hover:text-slate-700">Pokaži izvirni AI osnutek</summary>
-            <p className="mt-2 whitespace-pre-wrap rounded-md bg-slate-50 p-3 text-slate-600">{message.reply.aiDraft}</p>
+            <p className="mt-2 whitespace-pre-wrap rounded-md bg-slate-50 p-3 text-slate-600">
+              {message.reply.aiDraft}
+            </p>
           </details>
         )}
       </section>

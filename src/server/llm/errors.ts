@@ -8,7 +8,8 @@ export function toLLMError(err: unknown): LLMError {
   if (err instanceof LLMError) return err;
 
   const name = err instanceof Error ? err.name : "";
-  const status = typeof (err as { status?: unknown })?.status === "number" ? (err as { status: number }).status : undefined;
+  const status =
+    typeof (err as { status?: unknown })?.status === "number" ? (err as { status: number }).status : undefined;
 
   if (name === "APIConnectionTimeoutError" || name === "AbortError" || name === "TimeoutError") {
     return new LLMError("AI storitev se ni odzvala pravočasno. Poskusi znova.", { cause: err });

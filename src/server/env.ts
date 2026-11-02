@@ -22,9 +22,7 @@ const envSchema = z
   .transform((env) => ({
     ...env,
     // Pick a provider automatically when not set explicitly: real key wins, mock otherwise.
-    LLM_PROVIDER:
-      env.LLM_PROVIDER ??
-      (env.ANTHROPIC_API_KEY ? "anthropic" : env.OPENAI_API_KEY ? "openai" : "mock"),
+    LLM_PROVIDER: env.LLM_PROVIDER ?? (env.ANTHROPIC_API_KEY ? "anthropic" : env.OPENAI_API_KEY ? "openai" : "mock"),
   }))
   .superRefine((env, ctx) => {
     if (env.LLM_PROVIDER === "anthropic" && !env.ANTHROPIC_API_KEY) {

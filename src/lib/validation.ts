@@ -1,20 +1,17 @@
 import { z } from "zod";
 import { CATEGORIES, LIMITS, MESSAGE_STATUSES } from "./domain";
 
-/** Trims and turns empty strings into `undefined` so optional fields stay optional. */
-const optionalTrimmed = (max: number) =>
+/** Trims and turns empty strings into `undefined`, so blank optional inputs are simply omitted. */
+const trimmedOrUndefined = (max: number) =>
   z
     .string()
     .trim()
     .max(max, `Največ ${max} znakov.`)
-    .optional()
-    .transform((v) => (v ? v : undefined));
+    .transform((v) => v || undefined);
 
 export const createMessageSchema = z.object({
-  customerName: optionalTrimmed(LIMITS.nameMax),
-  customerEmail: optionalTrimmed(LIMITS.emailMax).pipe(
-    z.email("Neveljaven e-poštni naslov.").optional(),
-  ),
+  customerName: trimmedOrUndefined(LIMITS.nameMax).optional(),
+  customerEmail: trimmedOrUndefined(LIMITS.emailMax).pipe(z.email("Neveljaven e-poštni naslov.").optional()).optional(),
   body: z
     .string({ error: "Sporočilo je obvezno." })
     .trim()

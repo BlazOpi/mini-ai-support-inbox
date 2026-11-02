@@ -8,9 +8,12 @@ import type { Classification, DraftReplyInput, LLMProvider } from "./types";
 const RULES: ReadonlyArray<readonly [Category, RegExp]> = [
   [
     "complaint",
-    /(pritož|razočar|slab[aoie]?\b|ne deluje|pokvarjen|zamuj|zamud|reklamac|nezadovolj|vračil|broken|refund|complain|terrible|disappoint|not working)/i,
+    /(pritož|razočar|slab[aoie]?\b|ne deluje|pokvarjen|poškodovan|uničen|nesprejemljiv|zahtevam|zamuj|zamud|reklamac|nezadovolj|vračil|broken|damaged|refund|complain|terrible|disappoint|not working)/i,
   ],
-  ["question", /(\?|\bkako\b|\bkdaj\b|\bkje\b|\bzakaj\b|\bkoliko\b|\bali\b|\bhow\b|\bwhen\b|\bwhere\b|\bwhy\b|\bcan i\b)/i],
+  [
+    "question",
+    /(\?|\bkako\b|\bkdaj\b|\bkje\b|\bzakaj\b|\bkoliko\b|\bali\b|\bhow\b|\bwhen\b|\bwhere\b|\bwhy\b|\bcan i\b)/i,
+  ],
   ["praise", /(hvala|odlič|super|pohval|zadovolj|navdušen|thank|great|awesome|excellent|love)/i],
 ];
 
