@@ -30,7 +30,7 @@ describe("AI quota store", () => {
     fetchQuota.mockResolvedValueOnce(quota(5));
     await store.refresh();
 
-    let finish = (_: string) => {};
+    let finish: (value: string) => void = () => {};
     const running = store.track(() => new Promise<string>((resolve) => (finish = resolve)));
     expect(store.getSnapshot()?.remaining).toBe(4);
 
