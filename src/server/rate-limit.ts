@@ -41,6 +41,14 @@ export function createRateLimiter({
       bucket.count += 1;
       return { allowed: true, remaining: limit - bucket.count, retryAfterSeconds: 0 };
     },
+
+    /** Current standing of a key, without using up a request. */
+    peek(key: string): { limit: number; remaining: number; resetInSeconds: number } {
+      const t = now();
+      const bucket = buckets.get(key);
+      if (!bucket || bucket.resetAt <= t) return { limit, remaining: limit, resetInSeconds: 0 };
+      return { limit, remaining: limit - bucket.count, resetInSeconds: Math.ceil((bucket.resetAt - t) / 1000) };
+    },
   };
 }
 

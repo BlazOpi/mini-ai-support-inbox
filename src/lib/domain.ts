@@ -65,6 +65,14 @@ export interface MessageDto {
   reply: ReplyDto | null;
 }
 
+/** How many AI requests this client has left; the server's rate limiter is the source of truth. */
+export interface AiQuotaDto {
+  limit: number;
+  remaining: number;
+  /** Seconds until the counter refills; 0 when no request was used in the current window. */
+  resetInSeconds: number;
+}
+
 export interface ApiErrorBody {
   error: { code: string; message: string; details?: unknown };
 }

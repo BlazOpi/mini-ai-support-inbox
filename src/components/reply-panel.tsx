@@ -1,16 +1,18 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useState, useTransition } from "react";
+import { aiQuota } from "@/lib/ai-quota";
 import { ApiError, api } from "@/lib/api-client";
 import { CATEGORIES, CATEGORY_LABELS, LIMITS, type Category, type MessageDto } from "@/lib/domain";
 import { formatConfidence, formatDateTime } from "@/lib/format";
+import { AiLoadingOverlay, AiQuotaCounter, Spinner, useAiQuota } from "./ai-status";
 import { CategoryBadge } from "./badges";
 
 type Action = "save" | "approve" | "process" | "category" | null;
 
 const button =
-  "rounded-md px-3 py-2 text-sm font-medium shadow-sm transition disabled:cursor-not-allowed disabled:opacity-50";
+  "inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium shadow-sm transition disabled:cursor-not-allowed disabled:opacity-50";
 
 /**
  * Human-in-the-loop controls for one message. The parent re-mounts this component
@@ -19,25 +21,30 @@ const button =
 export function ReplyPanel({ message }: { message: MessageDto }) {
   const router = useRouter();
   const [draft, setDraft] = useState(message.reply?.body ?? "");
-  const [busy, setBusy] = useState<Action>(null);
+  const [action, setAction] = useState<Action>(null);
+  const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const { waitLabel } = useAiQuota();
 
+  const busy = isPending ? action : null;
+  const generating = busy === "process";
   const dirty = message.reply !== null && draft !== message.reply.body;
   const tooLong = draft.length > LIMITS.replyMax;
   const editable = message.status === "draft_ready";
 
-  async function run(action: Exclude<Action, null>, fn: () => Promise<unknown>) {
-    setBusy(action);
+  function run(next: Exclude<Action, null>, fn: () => Promise<unknown>) {
+    setAction(next);
     setError(null);
-    try {
-      await fn();
-      router.refresh();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Nepričakovana napaka. Poskusi znova.");
-    } finally {
-      setBusy(null);
-    }
+    startTransition(async () => {
+      try {
+        await fn();
+        // Stay busy until the fresh data is on screen, so nothing can fire again against the old state.
+        startTransition(() => router.refresh());
+      } catch (err) {
+        setError(err instanceof ApiError ? err.message : "Nepričakovana napaka. Poskusi znova.");
+      }
+    });
   }
 
   const save = () => run("save", () => api(`/api/messages/${message.id}/reply`, "PATCH", { body: draft }));
@@ -47,7 +54,8 @@ export function ReplyPanel({ message }: { message: MessageDto }) {
       if (dirty) await api(`/api/messages/${message.id}/reply`, "PATCH", { body: draft });
       await api(`/api/messages/${message.id}/approve`, "POST");
     });
-  const regenerate = () => run("process", () => api(`/api/messages/${message.id}/process`, "POST"));
+  const regenerate = () =>
+    run("process", () => aiQuota.track(() => api(`/api/messages/${message.id}/process`, "POST")));
   const changeCategory = (category: Category) =>
     run("category", () => api(`/api/messages/${message.id}`, "PATCH", { category }));
 
@@ -113,17 +121,24 @@ export function ReplyPanel({ message }: { message: MessageDto }) {
           )}
         </div>
 
-        {message.status === "failed" && (
+        {message.status === "failed" && !generating && (
           <div role="alert" className="mb-4 rounded-md bg-rose-50 p-3 text-sm text-rose-700 ring-1 ring-rose-200">
             <p className="font-medium">AI obdelava ni uspela.</p>
             <p>{message.aiError ?? "Neznana napaka."} Sporočilo je shranjeno — obdelavo lahko ponoviš.</p>
           </div>
         )}
 
-        {message.status === "processing" && (
+        {message.status === "processing" && !generating && (
           <p className="mb-4 rounded-md bg-amber-50 p-3 text-sm text-amber-800 ring-1 ring-amber-200">
             Sporočilo je v obdelavi. Če se stanje ne spremeni, osveži stran ali ponovi obdelavo.
           </p>
+        )}
+
+        {/* Nothing to cover yet (first attempt failed): the overlay still needs somewhere to show. */}
+        {generating && !message.reply && (
+          <div className="relative h-40 rounded-md ring-1 ring-slate-200">
+            <AiLoadingOverlay label="AI pripravlja odgovor…" />
+          </div>
         )}
 
         {message.status === "approved" && message.reply ? (
@@ -143,13 +158,16 @@ export function ReplyPanel({ message }: { message: MessageDto }) {
         ) : (
           message.reply && (
             <>
-              <textarea
-                aria-label="Besedilo odgovora"
-                className="min-h-64 w-full resize-y rounded-md border border-slate-300 p-3 text-sm leading-relaxed shadow-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 disabled:bg-slate-50"
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
-                disabled={!editable || busy !== null}
-              />
+              <div className="relative flex">
+                <textarea
+                  aria-label="Besedilo odgovora"
+                  className="min-h-64 w-full resize-y rounded-md border border-slate-300 p-3 text-sm leading-relaxed shadow-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 disabled:bg-slate-50"
+                  value={draft}
+                  onChange={(e) => setDraft(e.target.value)}
+                  disabled={!editable || busy !== null}
+                />
+                {generating && <AiLoadingOverlay label="AI pripravlja nov odgovor…" />}
+              </div>
               <p className={`mt-1 text-right text-xs ${tooLong ? "text-rose-600" : "text-slate-400"}`}>
                 {draft.length} / {LIMITS.replyMax}
               </p>
@@ -198,16 +216,19 @@ export function ReplyPanel({ message }: { message: MessageDto }) {
             <button
               type="button"
               onClick={regenerate}
-              disabled={busy !== null || dirty}
+              disabled={busy !== null || dirty || waitLabel !== null}
               title={dirty ? "Najprej shrani ali zavrzi spremembe." : undefined}
               className={`${button} ml-auto bg-white text-indigo-700 ring-1 ring-indigo-200 hover:bg-indigo-50`}
             >
-              {busy === "process"
-                ? "AI dela…"
-                : message.status === "draft_ready"
-                  ? "Ponovno generiraj"
-                  : "Ponovi AI obdelavo"}
+              {generating ? (
+                <>
+                  <Spinner /> AI dela…
+                </>
+              ) : (
+                (waitLabel ?? (message.status === "draft_ready" ? "Ponovno generiraj" : "Ponovi AI obdelavo"))
+              )}
             </button>
+            <AiQuotaCounter className="w-full text-right" />
           </div>
         )}
 

@@ -82,7 +82,16 @@ export function clientKey(request: Request): string {
   return forwarded || request.headers.get("x-real-ip") || "unknown";
 }
 
+function rateLimitKey(request: Request, scope: string): string {
+  return `${scope}:${clientKey(request)}`;
+}
+
 export function enforceRateLimit(limiter: RateLimiter, request: Request, scope: string) {
-  const result = limiter.check(`${scope}:${clientKey(request)}`);
+  const result = limiter.check(rateLimitKey(request, scope));
   if (!result.allowed) throw new RateLimitError(result.retryAfterSeconds);
+}
+
+/** What `enforceRateLimit` would see for this client, without using up a request. */
+export function rateLimitStatus(limiter: RateLimiter, request: Request, scope: string) {
+  return limiter.peek(rateLimitKey(request, scope));
 }

@@ -16,4 +16,23 @@ describe("rate limiter", () => {
     now = 60_000;
     expect(limiter.check("a").allowed).toBe(true);
   });
+
+  it("reports the standing of a key without using up a request", () => {
+    let now = 0;
+    const limiter = createRateLimiter({ limit: 2, windowMs: 60_000, now: () => now });
+
+    expect(limiter.peek("a")).toEqual({ limit: 2, remaining: 2, resetInSeconds: 0 });
+
+    limiter.check("a");
+    now = 15_000;
+    expect(limiter.peek("a")).toEqual({ limit: 2, remaining: 1, resetInSeconds: 45 });
+    expect(limiter.peek("a")).toEqual({ limit: 2, remaining: 1, resetInSeconds: 45 });
+
+    limiter.check("a");
+    limiter.check("a"); // blocked: must not push remaining below zero
+    expect(limiter.peek("a").remaining).toBe(0);
+
+    now = 60_000;
+    expect(limiter.peek("a")).toEqual({ limit: 2, remaining: 2, resetInSeconds: 0 });
+  });
 });
