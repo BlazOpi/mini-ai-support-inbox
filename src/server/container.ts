@@ -33,8 +33,20 @@ function createLLMProvider(): LLMProvider {
       const client = new OpenAI({ apiKey: env.OPENAI_API_KEY, timeout: env.LLM_TIMEOUT_MS, maxRetries: 2 });
       return new OpenAIProvider(Sentry.instrumentOpenAiClient(client, sentryOptions), env.OPENAI_MODEL);
     }
+    case "groq": {
+      // Groq implements the OpenAI Responses API, so only the base URL differs.
+      const client = new OpenAI({
+        apiKey: env.GROQ_API_KEY,
+        baseURL: "https://api.groq.com/openai/v1",
+        timeout: env.LLM_TIMEOUT_MS,
+        maxRetries: 2,
+      });
+      return new OpenAIProvider(Sentry.instrumentOpenAiClient(client, sentryOptions), env.GROQ_MODEL, "groq");
+    }
     case "mock":
-      logger.warn("llm.mock_provider_active", { hint: "Set ANTHROPIC_API_KEY or OPENAI_API_KEY for real AI." });
+      logger.warn("llm.mock_provider_active", {
+        hint: "Set ANTHROPIC_API_KEY, OPENAI_API_KEY or GROQ_API_KEY for real AI.",
+      });
       return new MockProvider();
   }
 }

@@ -10,11 +10,13 @@ const envSchema = z
     NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
     DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
 
-    LLM_PROVIDER: z.enum(["anthropic", "openai", "mock"]).optional(),
+    LLM_PROVIDER: z.enum(["anthropic", "openai", "groq", "mock"]).optional(),
     ANTHROPIC_API_KEY: z.string().min(1).optional(),
     ANTHROPIC_MODEL: z.string().min(1).default("claude-haiku-5-5"),
     OPENAI_API_KEY: z.string().min(1).optional(),
     OPENAI_MODEL: z.string().min(1).default("gpt-5-mini"),
+    GROQ_API_KEY: z.string().min(1).optional(),
+    GROQ_MODEL: z.string().min(1).default("openai/gpt-oss-20b"),
     LLM_TIMEOUT_MS: z.coerce.number().int().positive().default(20_000),
 
     RATE_LIMIT_AI_PER_MINUTE: z.coerce.number().int().positive().default(10),
@@ -22,7 +24,9 @@ const envSchema = z
   .transform((env) => ({
     ...env,
     // Pick a provider automatically when not set explicitly: real key wins, mock otherwise.
-    LLM_PROVIDER: env.LLM_PROVIDER ?? (env.ANTHROPIC_API_KEY ? "anthropic" : env.OPENAI_API_KEY ? "openai" : "mock"),
+    LLM_PROVIDER:
+      env.LLM_PROVIDER ??
+      (env.ANTHROPIC_API_KEY ? "anthropic" : env.OPENAI_API_KEY ? "openai" : env.GROQ_API_KEY ? "groq" : "mock"),
   }))
   .superRefine((env, ctx) => {
     if (env.LLM_PROVIDER === "anthropic" && !env.ANTHROPIC_API_KEY) {
@@ -30,6 +34,9 @@ const envSchema = z
     }
     if (env.LLM_PROVIDER === "openai" && !env.OPENAI_API_KEY) {
       ctx.addIssue({ code: "custom", message: "OPENAI_API_KEY is required for LLM_PROVIDER=openai" });
+    }
+    if (env.LLM_PROVIDER === "groq" && !env.GROQ_API_KEY) {
+      ctx.addIssue({ code: "custom", message: "GROQ_API_KEY is required for LLM_PROVIDER=groq" });
     }
   });
 

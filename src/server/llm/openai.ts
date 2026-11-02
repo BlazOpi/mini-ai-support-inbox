@@ -8,13 +8,15 @@ import { classificationSchema, type Classification, type DraftReplyInput, type L
 
 export type OpenAIClient = Pick<OpenAI, "responses">;
 
-/** Alternative provider via the OpenAI Responses API — same prompts, same contract. */
+/**
+ * Alternative provider via the OpenAI Responses API — same prompts, same contract.
+ * Also serves compatible APIs (Groq): pass a client with their base URL and a matching name.
+ */
 export class OpenAIProvider implements LLMProvider {
-  readonly name = "openai";
-
   constructor(
     private readonly client: OpenAIClient,
     readonly model: string,
+    readonly name: string = "openai",
   ) {}
 
   async classify(message: string): Promise<Classification> {
