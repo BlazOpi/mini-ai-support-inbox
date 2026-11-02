@@ -21,3 +21,4 @@ Next.js 16 App Router (Cache Components on), TypeScript strict, Drizzle + Postgr
 
 - `npm run dev` · `npm test` · `npm run typecheck` · `npm run lint`
 - `npm run db:generate` after schema changes, `npm run db:migrate` to apply.
+- `npm run db:local` runs Postgres without Docker (embedded-postgres on port 5432, applies migrations itself).
