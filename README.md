@@ -32,7 +32,11 @@ npm run db:migrate                # ustvari tabele
 npm run dev                       # http://localhost:3000
 ```
 
-Brez API ključa aplikacija uporabi **mock LLM provider** (deterministična pravila po ključnih besedah). Tako cel tok deluje offline, v UI pa piše `mock/mock-v1`. Z `ANTHROPIC_API_KEY` (ali `OPENAI_API_KEY`) se samodejno vklopi pravi model.
+**Brez Dockerja:** namesto `docker compose up -d` in `npm run db:migrate` v ločenem terminalu zaženi `npm run db:local` (pravi PostgreSQL 16 iz npm paketa `embedded-postgres`). Tabele ustvari sam, podatke pa hrani v `.pgdata/`.
+
+Brez API ključa aplikacija uporabi **mock LLM provider** (deterministična pravila po ključnih besedah). Tako cel tok deluje offline, v UI pa piše `mock/mock-v1`. Z `ANTHROPIC_API_KEY` (ali `OPENAI_API_KEY`, `GROQ_API_KEY`) se samodejno vklopi pravi model. [Groq](https://console.groq.com) ima brezplačen paket, primeren za preizkus.
+
+V razvojnem načinu ima obrazec še **testne scenarije** (`src/lib/scenarios.ts`): en klik ustvari izmišljeno stranko in njeno sporočilo, ga pošlje skozi običajen tok in odpre pripravljen odgovor. Ko odgovor potrdiš, z gumbom _Generiraj odgovor stranke_ stranka odpiše in AI pripravi naslednji odgovor, dokler se scenarij ne konča. Med scenariji je tudi poskus manipulacije AI (prompt injection).
 
 | Ukaz                                 | Opis                                                                              |
 | ------------------------------------ | --------------------------------------------------------------------------------- |
@@ -40,6 +44,7 @@ Brez API ključa aplikacija uporabi **mock LLM provider** (deterministična prav
 | `npm run typecheck` / `npm run lint` | TypeScript strict / ESLint                                                        |
 | `npm run db:generate`                | nova migracija po spremembi sheme                                                 |
 | `npm run db:migrate`                 | aplicira migracije iz `drizzle/`                                                  |
+| `npm run db:local`                   | Postgres brez Dockerja, tabele ustvari sam, podatki v `.pgdata/`                  |
 
 ### Deploy (Vercel + Supabase + Sentry)
 
@@ -59,6 +64,7 @@ flowchart LR
   SVC --> LLM{{"LLMProvider"}}
   LLM --> A["Claude (Anthropic)"]
   LLM --> O["OpenAI"]
+  LLM --> G["Groq"]
   LLM --> M["Mock"]
   API & SVC -. "napake + tracing" .-> S["Sentry"]
 ```
@@ -71,7 +77,7 @@ flowchart LR
 | HTTP        | `app/api/**/route.ts`, `server/api.ts`, `server/http.ts` | validacija (zod), preverjanje izvora, rate limit, preslikava napak v HTTP kode                                |
 | Domena      | `server/messages/service.ts`                             | statusni tok, pravila (urejanje samo osnutkov, potrditev enkrat …)                                            |
 | Podatki     | `server/messages/repository.ts`, `server/db/*`           | samo SQL; pogojni UPDATE-i za konsistenco                                                                     |
-| AI          | `server/llm/*`                                           | vmesnik `LLMProvider`, prompti, Claude/OpenAI/mock implementacije                                             |
+| AI          | `server/llm/*`                                           | vmesnik `LLMProvider`, prompti, Claude/OpenAI/Groq/mock implementacije                                        |
 | Kompozicija | `server/container.ts`                                    | edino mesto, ki pozna konkretne implementacije (DI)                                                           |
 
 **Statusni tok sporočila:**
@@ -111,6 +117,7 @@ stateDiagram-v2
 | `PATCH` | `/api/messages/:id/reply`                | `{ body }`: urejanje osnutka                                     |
 | `POST`  | `/api/messages/:id/approve`              | potrditev odgovora                                               |
 | `POST`  | `/api/messages/:id/process`              | ponovi obdelavo / ponovno generiraj                              |
+| `POST`  | `/api/messages/:id/customer-reply`       | `{ body }`: odgovor stranke, nadaljuje pogovor                   |
 | `GET`   | `/api/health`                            | stanje aplikacije in baze                                        |
 
 Napake imajo enotno obliko `{ "error": { "code": "...", "message": "..." } }` in ustrezne kode `400/403/404/409/413/429/500`.
@@ -122,7 +129,7 @@ Napake imajo enotno obliko `{ "error": { "code": "...", "message": "..." } }` in
 - **XSS**: vsebina strank se izpisuje samo kot tekst (React escaping, brez `dangerouslySetInnerHTML`)
 - **Prompt injection**: besedilo stranke je med ločili `<customer_message>`, ki jih stranka ne more zapreti. Model dobi navodilo, naj ga obravnava kot podatke, output je omejen na shemo, človek vedno potrdi.
 - **Skrivnosti** samo na serverju (`server-only`, env validacija z zod)
-- **Rate limit** na AI endpointih (privzeto 10/min/IP) z `Retry-After`
+- **Rate limit** na AI endpointih (privzeto 10/min/IP, `RATE_LIMIT_AI_PER_MINUTE`) z `Retry-After`; UI prek `GET /api/ai-quota` pokaže števec preostalih zahtev in zaklene AI gumbe, ko jih zmanjka
 - **CSRF**: preverjanje `Origin` pri mutacijah + JSON telo (CORS preflight)
 - **Dostop**: HTTP Basic Auth (Next.js `proxy.ts`, primerjava v konstantnem času) za demo
 - **Supabase RLS** vklopljen na obeh tabelah (brez politik): javni Data API nima dostopa, aplikacija dostopa kot lastnik tabel
