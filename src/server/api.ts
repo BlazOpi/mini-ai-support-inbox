@@ -1,4 +1,5 @@
 import "server-only";
+import { unstable_rethrow } from "next/navigation";
 import { idSchema } from "@/lib/validation";
 import { reportUnhandled } from "@/server/container";
 import { assertSameOrigin, errorResponse, parseWith } from "@/server/http";
@@ -13,6 +14,8 @@ export function apiHandler<Ctx>(fn: (request: Request, ctx: Ctx) => Promise<Resp
       assertSameOrigin(request);
       return await fn(request, ctx);
     } catch (err) {
+      // Next.js signals (e.g. "this route is dynamic") are not errors: don't log or report them.
+      unstable_rethrow(err);
       return errorResponse(err, reportUnhandled);
     }
   };
