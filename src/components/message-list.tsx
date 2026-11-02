@@ -80,6 +80,7 @@ export function MessageList({ messages, filtered }: { messages: MessageDto[]; fi
             <div className="flex flex-wrap items-center gap-2">
               <CategoryBadge category={m.category} />
               <StatusBadge status={m.status} />
+              {m.threadId && <span className="text-xs text-slate-500">· nadaljevanje pogovora</span>}
               {m.reply?.edited && <span className="text-xs text-slate-500">· ročno urejeno</span>}
               <time dateTime={m.createdAt} className="ml-auto text-xs text-slate-400">
                 {formatDateTime(m.createdAt)}

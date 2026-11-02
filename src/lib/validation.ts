@@ -20,6 +20,8 @@ export const createMessageSchema = z.object({
 });
 export type CreateMessageInput = z.infer<typeof createMessageSchema>;
 
+export const customerReplySchema = createMessageSchema.pick({ body: true });
+
 export const updateReplySchema = z.object({
   body: z
     .string({ error: "Odgovor je obvezen." })

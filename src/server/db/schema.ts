@@ -1,4 +1,4 @@
-import { index, pgEnum, pgTable, real, text, timestamp, uuid, varchar } from "drizzle-orm/pg-core";
+import { index, pgEnum, pgTable, real, text, timestamp, uuid, varchar, type AnyPgColumn } from "drizzle-orm/pg-core";
 import { CATEGORIES, CATEGORY_SOURCES, MESSAGE_STATUSES } from "@/lib/domain";
 
 export const messageCategory = pgEnum("message_category", CATEGORIES);
@@ -21,6 +21,8 @@ export const messages = pgTable(
   "messages",
   {
     id: uuid("id").primaryKey().defaultRandom(),
+    /** First message of the conversation this one continues; null on the first message itself. */
+    threadId: uuid("thread_id").references((): AnyPgColumn => messages.id, { onDelete: "cascade" }),
     customerName: varchar("customer_name", { length: 120 }),
     customerEmail: varchar("customer_email", { length: 254 }),
     body: text("body").notNull(),
@@ -35,6 +37,7 @@ export const messages = pgTable(
     index("messages_created_at_idx").on(t.createdAt.desc()),
     index("messages_category_idx").on(t.category),
     index("messages_status_idx").on(t.status),
+    index("messages_thread_id_idx").on(t.threadId),
   ],
 ).enableRLS();
 

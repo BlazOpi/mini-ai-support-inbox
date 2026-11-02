@@ -5,6 +5,7 @@ import type { MessageWithReply } from "./repository";
 export function toMessageDto(row: MessageWithReply): MessageDto {
   return {
     id: row.id,
+    threadId: row.threadId,
     customerName: row.customerName,
     customerEmail: row.customerEmail,
     body: row.body,

@@ -50,6 +50,8 @@ export interface ReplyDto {
 
 export interface MessageDto {
   id: string;
+  /** First message of the conversation this one continues; null on the first message itself. */
+  threadId: string | null;
   customerName: string | null;
   customerEmail: string | null;
   body: string;

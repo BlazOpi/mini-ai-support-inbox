@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { nextCustomerReply, SCENARIOS, startScenario } from "@/lib/scenarios";
 import { ConflictError, LLMError, NotFoundError } from "@/server/errors";
 import { MockProvider } from "@/server/llm/mock";
 import type { LLMProvider } from "@/server/llm/types";
@@ -37,6 +38,86 @@ describe("message service", () => {
 
   afterEach(async () => {
     await close();
+  });
+
+  describe("conversations", () => {
+    it("continues the thread with the earlier exchange as context for the draft", async () => {
+      const draftReply = vi.fn<LLMProvider["draftReply"]>(async () => "Osnutek");
+      const service = build(stubProvider({ draftReply }));
+
+      const first = await service.create({
+        body: "Kdaj bo dostava?",
+        customerName: "Ana",
+        customerEmail: "a@example.com",
+      });
+      await service.updateReply(first.id, "Urejen odgovor agenta");
+      await service.approve(first.id);
+      const second = await service.addCustomerReply(first.id, "Paket je poškodovan.");
+
+      expect(second.threadId).toBe(first.id);
+      expect(second.customerName).toBe("Ana");
+      expect(second.customerEmail).toBe("a@example.com");
+      expect(second.status).toBe("draft_ready");
+      expect(draftReply).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          message: "Paket je poškodovan.",
+          history: [{ customerMessage: "Kdaj bo dostava?", agentReply: "Urejen odgovor agenta" }],
+        }),
+      );
+    });
+
+    it("does not let the customer reply while the last draft is unapproved", async () => {
+      const service = build();
+      const first = await service.create({ body: "Kdaj bo dostava?" });
+
+      await expect(service.addCustomerReply(first.id, "Halo?")).rejects.toBeInstanceOf(ConflictError);
+
+      await service.approve(first.id);
+      await service.addCustomerReply(first.id, "Halo?");
+      // The first message is approved, but its thread now has an open draft.
+      await expect(service.addCustomerReply(first.id, "Še vedno nič?")).rejects.toBeInstanceOf(ConflictError);
+    });
+
+    it("lists one row per conversation and returns the whole thread from any of its messages", async () => {
+      const service = build();
+      const first = await service.create({ body: "Kdaj bo dostava?" });
+      await service.approve(first.id);
+      const second = await service.addCustomerReply(first.id, "Paket je poškodovan.");
+      const other = await service.create({ body: "Hvala za vse." });
+
+      const listed = await service.list({ limit: 50 });
+      expect(listed.map((m) => m.id)).toEqual([other.id, second.id]);
+      expect((await service.list({ limit: 50, category: "question" })).map((m) => m.id)).toEqual([]);
+
+      for (const id of [first.id, second.id]) {
+        expect((await service.getThread(id)).map((m) => m.id)).toEqual([first.id, second.id]);
+      }
+    });
+
+    it.each(SCENARIOS)("plays the $title scenario from start to end", async (scenario) => {
+      const service = build();
+      const sample = startScenario(scenario);
+      let current = await service.create(sample);
+      const said = [sample.body];
+
+      for (const [index, turn] of scenario.turns.entries()) {
+        expect(current.status).toBe("draft_ready");
+        expect(current.category).toBe(turn.expectedCategory);
+        expect(current.reply?.body).toContain(sample.customerName);
+        await service.approve(current.id);
+
+        const next = nextCustomerReply(said);
+        if (index === scenario.turns.length - 1) {
+          expect(next).toBeNull();
+        } else {
+          said.push(next as string);
+          current = await service.addCustomerReply(current.id, next as string);
+        }
+      }
+
+      expect(await service.getThread(current.id)).toHaveLength(scenario.turns.length);
+      expect(await service.list({ limit: 50 })).toHaveLength(1);
+    });
   });
 
   it("stores the message, classifies it and drafts a reply", async () => {

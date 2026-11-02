@@ -1,4 +1,5 @@
-import { and, desc, eq, inArray, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, notExists, or, sql, type SQL } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import type { Category, CategorySource, MessageStatus } from "@/lib/domain";
 import type { CreateMessageInput, ListMessagesQuery } from "@/lib/validation";
 import { messages, replies, type MessageRow, type ReplyRow } from "@/server/db/schema";
@@ -27,10 +28,11 @@ export function createMessageRepository(db: Database) {
       .leftJoin(replies, eq(replies.messageId, messages.id));
 
   return {
-    async insert(input: CreateMessageInput): Promise<MessageRow> {
+    async insert(input: CreateMessageInput & { threadId?: string }): Promise<MessageRow> {
       const [row] = await db
         .insert(messages)
         .values({
+          threadId: input.threadId ?? null,
           customerName: input.customerName ?? null,
           customerEmail: input.customerEmail ?? null,
           body: input.body,
@@ -45,12 +47,34 @@ export function createMessageRepository(db: Database) {
       return row ? { ...row.message, reply: row.reply } : null;
     },
 
+    /** All messages of a conversation, oldest first. */
+    async findThread(threadId: string): Promise<MessageWithReply[]> {
+      const rows = await selectWithReply()
+        .where(or(eq(messages.id, threadId), eq(messages.threadId, threadId)))
+        .orderBy(asc(messages.createdAt));
+      return rows.map((r) => ({ ...r.message, reply: r.reply }));
+    },
+
+    /** One row per conversation: its latest message, which is the one that needs attention. */
     async list(query: ListMessagesQuery): Promise<MessageWithReply[]> {
-      const filters: SQL[] = [];
+      const later = alias(messages, "later");
+      const filters: SQL[] = [
+        notExists(
+          db
+            .select({ id: later.id })
+            .from(later)
+            .where(
+              and(
+                eq(later.threadId, sql`coalesce(${messages.threadId}, ${messages.id})`),
+                gt(later.createdAt, messages.createdAt),
+              ),
+            ),
+        ),
+      ];
       if (query.category) filters.push(eq(messages.category, query.category));
       if (query.status) filters.push(eq(messages.status, query.status));
       const rows = await selectWithReply()
-        .where(filters.length ? and(...filters) : undefined)
+        .where(and(...filters))
         .orderBy(desc(messages.createdAt))
         .limit(query.limit);
       return rows.map((r) => ({ ...r.message, reply: r.reply }));

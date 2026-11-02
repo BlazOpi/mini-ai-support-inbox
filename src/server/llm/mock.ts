@@ -26,6 +26,15 @@ const TEMPLATES: Record<Category, string> = {
   other: "hvala za vaše sporočilo. Nam lahko prosim zaupate, kako vam lahko pomagamo?",
 };
 
+const FOLLOW_UP_TEMPLATES: Record<Category, string> = {
+  question:
+    "hvala za dodatno vprašanje. Podatke preverjamo in vam jih potrdimo v naslednjem sporočilu: [odgovor agenta].",
+  complaint:
+    "razumemo vašo skrb in se opravičujemo, ker zadeva še ni urejena. Primer smo predali odgovorni osebi, naslednji korak pa je [naslednji korak].",
+  praise: "hvala za povratno informacijo. Veseli nas, da je zadeva urejena, zato jo s tem zaključujemo.",
+  other: "hvala za informacijo, zabeležili smo jo pri vašem primeru. Če boste potrebovali še kaj, smo vam na voljo.",
+};
+
 export class MockProvider implements LLMProvider {
   readonly name = "mock";
   readonly model = "mock-v1";
@@ -35,8 +44,9 @@ export class MockProvider implements LLMProvider {
     return match ? { category: match[0], confidence: 0.6 } : { category: "other", confidence: 0.3 };
   }
 
-  async draftReply({ category, customerName }: DraftReplyInput): Promise<string> {
+  async draftReply({ category, customerName, history }: DraftReplyInput): Promise<string> {
     const greeting = customerName ? `Pozdravljeni, ${customerName.trim()},` : "Pozdravljeni,";
-    return `${greeting}\n\n${TEMPLATES[category]}\n\nLep pozdrav,\nEkipa za podporo strankam`;
+    const templates = history?.length ? FOLLOW_UP_TEMPLATES : TEMPLATES;
+    return `${greeting}\n\n${templates[category]}\n\nLep pozdrav,\nEkipa za podporo strankam`;
   }
 }

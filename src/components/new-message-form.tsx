@@ -3,7 +3,8 @@
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { ApiError, api } from "@/lib/api-client";
-import { LIMITS, type MessageDto } from "@/lib/domain";
+import { CATEGORIES, CATEGORY_LABELS, LIMITS, type MessageDto } from "@/lib/domain";
+import { pickScenario, SCENARIOS, SCENARIOS_ENABLED, startScenario, type Scenario } from "@/lib/scenarios";
 
 const EMPTY = { customerName: "", customerEmail: "", body: "" };
 
@@ -20,13 +21,24 @@ export function NewMessageForm() {
   const set = (field: keyof typeof EMPTY) => (e: { target: { value: string } }) =>
     setValues((v) => ({ ...v, [field]: e.target.value }));
 
-  async function onSubmit(e: FormEvent) {
+  function onSubmit(e: FormEvent) {
     e.preventDefault();
+    void submit(values);
+  }
+
+  /** One click: show the fake customer's message in the form and send it through the normal flow. */
+  function onStartScenario(scenario: Scenario) {
+    const sample = startScenario(scenario);
+    setValues(sample);
+    void submit(sample);
+  }
+
+  async function submit(input: typeof EMPTY) {
     setPending(true);
     setError(null);
     setFieldErrors({});
     try {
-      const message = await api<MessageDto>("/api/messages", "POST", values);
+      const message = await api<MessageDto>("/api/messages", "POST", input);
       setValues(EMPTY);
       router.push(`/messages/${message.id}`);
     } catch (err) {
@@ -45,6 +57,29 @@ export function NewMessageForm() {
 
   return (
     <form onSubmit={onSubmit} className="space-y-4" noValidate>
+      {SCENARIOS_ENABLED && (
+        <div className="space-y-2 rounded-md border border-dashed border-slate-300 bg-slate-50 p-3">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-xs font-medium text-slate-500">Testni scenarij z izmišljeno stranko</p>
+            <SampleButton disabled={pending} onClick={() => onStartScenario(pickScenario())}>
+              Naključen
+            </SampleButton>
+          </div>
+          {CATEGORIES.map((category) => (
+            <div key={category}>
+              <p className="mb-1 text-xs text-slate-400">{CATEGORY_LABELS[category]}</p>
+              <div className="flex flex-wrap gap-1.5">
+                {SCENARIOS.filter((s) => s.turns[0].expectedCategory === category).map((scenario) => (
+                  <SampleButton key={scenario.id} disabled={pending} onClick={() => onStartScenario(scenario)}>
+                    {scenario.title}
+                  </SampleButton>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
         <Field label="Ime stranke" hint="neobvezno" error={fieldErrors.customerName}>
           <input
@@ -99,6 +134,27 @@ export function NewMessageForm() {
         {pending ? "AI klasificira in pripravlja odgovor…" : "Shrani in obdelaj z AI"}
       </button>
     </form>
+  );
+}
+
+function SampleButton({
+  disabled,
+  onClick,
+  children,
+}: {
+  disabled: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      className="rounded-md border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+    >
+      {children}
+    </button>
   );
 }
 

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { StatusBadge } from "@/components/badges";
+import { CustomerReplyPanel } from "@/components/customer-reply-panel";
 import { ReplyPanel } from "@/components/reply-panel";
 import { formatDateTime } from "@/lib/format";
 import { idSchema } from "@/lib/validation";
@@ -25,18 +26,21 @@ async function MessageDetail({ params }: Pick<PageProps<"/messages/[id]">, "para
   const { id } = await params;
   if (!idSchema.safeParse(id).success) notFound();
 
-  const message = await getContainer()
-    .messageService.get(id)
+  const thread = await getContainer()
+    .messageService.getThread(id)
     .catch((err: unknown) => {
       if (err instanceof NotFoundError) notFound();
       throw err;
     });
+  // The page always works on the latest message; earlier ones are read-only context.
+  const message = thread[thread.length - 1];
+  const earlier = thread.slice(0, -1);
 
   return (
     <div className="grid items-start gap-6 lg:grid-cols-[1fr_1.2fr]">
       <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
         <div className="mb-3 flex flex-wrap items-center gap-2">
-          <h1 className="text-lg font-semibold">Sporočilo stranke</h1>
+          <h1 className="text-lg font-semibold">{earlier.length > 0 ? "Pogovor s stranko" : "Sporočilo stranke"}</h1>
           <StatusBadge status={message.status} />
         </div>
         <dl className="mb-4 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
@@ -49,13 +53,35 @@ async function MessageDetail({ params }: Pick<PageProps<"/messages/[id]">, "para
             <time dateTime={message.createdAt}>{formatDateTime(message.createdAt)}</time>
           </dd>
         </dl>
+        {earlier.length > 0 && (
+          <ol aria-label="Prejšnja sporočila pogovora" className="mb-4 space-y-3">
+            {earlier.map((turn) => (
+              <li key={turn.id} className="space-y-2">
+                <p className="whitespace-pre-wrap rounded-md bg-slate-50 p-3 text-sm leading-relaxed ring-1 ring-slate-200">
+                  {turn.body}
+                </p>
+                {turn.reply && (
+                  <p className="ml-6 whitespace-pre-wrap rounded-md bg-emerald-50/60 p-3 text-sm leading-relaxed ring-1 ring-emerald-200">
+                    {turn.reply.body}
+                  </p>
+                )}
+              </li>
+            ))}
+          </ol>
+        )}
         {/* Rendered as text (React escapes it) — customer content is never injected as HTML. */}
         <p className="whitespace-pre-wrap rounded-md bg-slate-50 p-4 text-sm leading-relaxed ring-1 ring-slate-200">
           {message.body}
         </p>
       </section>
 
-      <ReplyPanel key={`${message.status}:${message.updatedAt}:${message.reply?.updatedAt ?? ""}`} message={message} />
+      <div className="space-y-5">
+        <ReplyPanel
+          key={`${message.id}:${message.status}:${message.updatedAt}:${message.reply?.updatedAt ?? ""}`}
+          message={message}
+        />
+        <CustomerReplyPanel key={message.id} message={message} customerMessages={thread.map((m) => m.body)} />
+      </div>
     </div>
   );
 }

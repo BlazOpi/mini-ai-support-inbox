@@ -8,10 +8,17 @@ export const classificationSchema = z.object({
 });
 export type Classification = z.infer<typeof classificationSchema>;
 
+/** An earlier exchange of the same conversation. */
+export interface ConversationTurn {
+  customerMessage: string;
+  agentReply: string | null;
+}
+
 export interface DraftReplyInput {
   message: string;
   category: Category;
   customerName?: string | null;
+  history?: readonly ConversationTurn[];
 }
 
 /**
