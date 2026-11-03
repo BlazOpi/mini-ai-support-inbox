@@ -1,5 +1,7 @@
 # Mini AI Support Inbox
 
+[![CI](https://github.com/BlazOpi/mini-ai-support-inbox/actions/workflows/ci.yml/badge.svg)](https://github.com/BlazOpi/mini-ai-support-inbox/actions/workflows/ci.yml)
+
 Spletna aplikacija za obdelavo sporočil strank. **AI razvrsti sporočilo in pripravi predlog odgovora, človek ga uredi in potrdi.**
 
 ![Inbox](docs/screenshot-inbox.png)
@@ -10,10 +12,11 @@ Spletna aplikacija za obdelavo sporočil strank. **AI razvrsti sporočilo in pri
 - **AI klasifikacija**: `vprašanje | pritožba | pohvala | drugo` + zanesljivost (structured output, JSON schema)
 - **Predlog odgovora z LLM**: ton glede na kategorijo, odgovor v jeziku stranke, brez izmišljenih dejstev (manjkajoči podatki ostanejo kot `[placeholder]`)
 - **Urejanje in potrditev odgovora**: po potrditvi je odgovor zaklenjen, original AI osnutka ostane shranjen
-- **Pogovori**: stranka lahko odgovori, AI pa pripravi naslednji osnutek s kontekstom prejšnjih sporočil
+- **Pogovori**: stranka lahko odgovori, AI pa pripravi naslednji osnutek s kontekstom prejšnjih sporočil. Potrjen odgovor se takoj prikaže v pogovoru.
 - **Zgodovina sprememb**: vsaka sprememba je zapisana v bazi in vidna na strani sporočila
 - **Filtri** po kategoriji in statusu, ročni popravek kategorije, ponovno generiranje osnutka
 - **Zaščita pred preveč zahtevami**: števec preostalih AI zahtev, zaklenjeni gumbi med obdelavo
+- **Stanje nalaganja**: spinner ob osvežitvi strani, med delom AI in med osveževanjem pogovora
 - **Sentry**: produkcijske napake (client + server), sledenje LLM klicem, brez osebnih podatkov
 
 ![Podrobnosti](docs/screenshot-detail.png)
@@ -29,10 +32,13 @@ Potrebuješ Node.js 22+ in brezplačen projekt na [Supabase](https://supabase.co
    ```
 2. V Supabase odpri **SQL Editor**, prilepi celotno datoteko [`supabase/setup.sql`](supabase/setup.sql) in klikni **Run**. Ustvari tabele, vklopi zaščito RLS in naloži demo tickete.
 3. V `.env.local` nastavi `DATABASE_URL` (glej spodaj).
-4. Zaženi aplikacijo in odpri <http://localhost:3000>:
+4. Preveri bazo, zaženi aplikacijo in odpri <http://localhost:3000>:
    ```bash
+   npm run db:check
    npm run dev
    ```
+
+Namesto Supabase lahko uporabiš tudi drug Postgres, na primer v Dockerju. V `DATABASE_URL` vpiši njegov naslov in tabele ustvari z `npm run db:migrate`.
 
 Brez AI ključa aplikacija uporabi **mock provider** (pravila po ključnih besedah), zato cel tok deluje tudi brez AI računa. Z `GROQ_API_KEY`, `ANTHROPIC_API_KEY` ali `OPENAI_API_KEY` se samodejno vklopi pravi model. [Groq](https://console.groq.com) ima brezplačen paket, primeren za preizkus.
 
@@ -56,6 +62,8 @@ Vrednosti najdeš v Supabase pod **Connect → Direct → Transaction pooler**:
 
 Aplikacija se z bazo povezuje neposredno, zato ključev Supabase (Publishable, Secret) in paketa `@supabase/supabase-js` ne potrebuje.
 
+V razvojnem načinu glava strani pokaže, katera baza je v uporabi. Sprememba `DATABASE_URL` v `.env.local` začne veljati takoj, brez ponovnega zagona.
+
 ### Ukazi
 
 | Ukaz                                 | Opis                                                                              |
@@ -66,6 +74,7 @@ Aplikacija se z bazo povezuje neposredno, zato ključev Supabase (Publishable, S
 | `npm run format`                     | Prettier                                                                          |
 | `npm run db:generate`                | nova migracija po spremembi sheme                                                 |
 | `npm run db:migrate`                 | aplicira migracije iz `drizzle/`                                                  |
+| `npm run db:check`                   | preizkusi bazo v `DATABASE_URL`: povezava, tabele, migracije, branje in pisanje   |
 | `npm run db:supabase-sql`            | po novi migraciji ali spremembi demo podatkov na novo zgradi `supabase/setup.sql` |
 | `npm run db:studio`                  | Drizzle Studio za pregled podatkov                                                |
 
@@ -181,7 +190,7 @@ Napake imajo enotno obliko `{ "error": { "code": "...", "message": "..." } }` in
 ## Obravnava napak in observability
 
 - Hierarhija napak (`ValidationError`, `NotFoundError`, `ConflictError`, `RateLimitError`, `LLMError` …) → enoten JSON odgovor
-- Napake SDK-jev (timeout, 401, 429, 5xx) se preslikajo v razumljiva sporočila. LLM klici imajo timeout (20 s) in 2 retryja z backoffom (SDK).
+- Napake SDK-jev (timeout, 401, 429, 5xx) se preslikajo v razumljiva sporočila. LLM klici imajo timeout (20 s) in 2 retryja z backoffom (SDK). Klasifikacija se ponovi do trikrat, kadar Groq zavrne odgovor svojega modela, ker ne ustreza shemi.
 - `error.tsx` / `global-error.tsx` / `not-found.tsx` v UI, napake se pošljejo v Sentry
 - **Sentry**: `instrumentation.ts` (server, `onRequestError`), `instrumentation-client.ts` (browser), tunnel route proti ad-blockerjem, source mapi ob buildu. LLM klici so instrumentirani: model, latenca in tokeni, brez vsebine.
 - Strukturirani JSON logi brez osebnih podatkov (`ai.processed`, `ai.failed` z `messageId`, `stage`, `durationMs`)
