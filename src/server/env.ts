@@ -23,7 +23,7 @@ const envSchema = z
   })
   .transform((env) => ({
     ...env,
-    // Pick a provider automatically when not set explicitly: real key wins, mock otherwise.
+    // Without an explicit choice, use the first provider with a key, or the offline mock if there is none.
     LLM_PROVIDER:
       env.LLM_PROVIDER ??
       (env.ANTHROPIC_API_KEY ? "anthropic" : env.OPENAI_API_KEY ? "openai" : env.GROQ_API_KEY ? "groq" : "mock"),
@@ -46,7 +46,10 @@ let cached: Env | undefined;
 
 export function getEnv(): Env {
   if (cached) return cached;
-  const parsed = envSchema.safeParse(process.env);
+  // A blank value, like `GROQ_API_KEY=` in a copied .env.example, means "not set", not an invalid key.
+  const parsed = envSchema.safeParse(
+    Object.fromEntries(Object.entries(process.env).filter(([, value]) => value !== "")),
+  );
   if (!parsed.success) {
     const issues = parsed.error.issues.map((i) => `${i.path.join(".") || "env"}: ${i.message}`);
     throw new Error(`Invalid server configuration:\n- ${issues.join("\n- ")}`);
