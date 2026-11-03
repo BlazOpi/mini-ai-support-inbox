@@ -33,6 +33,26 @@ describe("server environment", () => {
     expect((await loadEnv()).LLM_PROVIDER).toBe("groq");
   });
 
+  it("follows an edited .env.local in development", async () => {
+    vi.stubEnv("NODE_ENV", "development");
+    const { getEnv } = await import("./env");
+    expect(getEnv().DATABASE_URL).toContain("localhost");
+
+    vi.stubEnv("DATABASE_URL", "postgres://user:pass@other-host:5432/db");
+
+    expect(getEnv().DATABASE_URL).toContain("other-host");
+  });
+
+  it("keeps its settings in production", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    const { getEnv } = await import("./env");
+    expect(getEnv().DATABASE_URL).toContain("localhost");
+
+    vi.stubEnv("DATABASE_URL", "postgres://user:pass@other-host:5432/db");
+
+    expect(getEnv().DATABASE_URL).toContain("localhost");
+  });
+
   it("still rejects a missing database URL", async () => {
     vi.stubEnv("DATABASE_URL", "");
 

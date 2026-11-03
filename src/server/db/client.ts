@@ -13,20 +13,24 @@ import * as schema from "./schema";
  *   pipelining can hang queries or mix up their results through this pooler. 0 is not an option
  *   here: it breaks `sql.begin()`, which every write in this app uses.
  */
-const globalForDb = globalThis as unknown as { __inboxSql?: postgres.Sql };
+const globalForDb = globalThis as unknown as { __inboxDb?: { url: string; sql: postgres.Sql } };
 
 export function createDb() {
   const { DATABASE_URL, NODE_ENV } = getEnv();
-  const sql =
-    globalForDb.__inboxSql ??
-    postgres(DATABASE_URL, {
-      prepare: false,
-      max_pipeline: 1,
-      max: NODE_ENV === "production" ? 3 : 5,
-      idle_timeout: 20,
-      connect_timeout: 10,
-    });
-  // Reuse the pool across hot reloads in development.
-  if (NODE_ENV !== "production") globalForDb.__inboxSql = sql;
+  const existing = globalForDb.__inboxDb;
+
+  // Reuse the pool across hot reloads in development, but only for the same database:
+  // reusing it after DATABASE_URL changed would keep the app on the old database without saying so.
+  if (existing?.url === DATABASE_URL) return drizzle(existing.sql, { schema });
+  void existing?.sql.end({ timeout: 5 });
+
+  const sql = postgres(DATABASE_URL, {
+    prepare: false,
+    max_pipeline: 1,
+    max: NODE_ENV === "production" ? 3 : 5,
+    idle_timeout: 20,
+    connect_timeout: 10,
+  });
+  if (NODE_ENV !== "production") globalForDb.__inboxDb = { url: DATABASE_URL, sql };
   return drizzle(sql, { schema });
 }

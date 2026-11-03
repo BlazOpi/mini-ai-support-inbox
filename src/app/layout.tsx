@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { Suspense } from "react";
+import { DatabaseBadge } from "@/components/database-badge";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -18,7 +20,12 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
               <span className="grid size-7 place-items-center rounded-md bg-indigo-600 text-xs text-white">AI</span>
               Mini AI Support Inbox
             </Link>
-            <span className="text-xs text-slate-500">AI pripravi osnutek · človek potrdi</span>
+            <div className="flex items-center gap-3">
+              <Suspense>
+                <DatabaseBadge />
+              </Suspense>
+              <span className="text-xs text-slate-500">AI pripravi osnutek · človek potrdi</span>
+            </div>
           </div>
         </header>
         <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6">{children}</main>

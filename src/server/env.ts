@@ -45,7 +45,8 @@ export type Env = z.infer<typeof envSchema>;
 let cached: Env | undefined;
 
 export function getEnv(): Env {
-  if (cached) return cached;
+  // Settings can't change in production. In development, Next.js reloads an edited .env.local.
+  if (cached && process.env.NODE_ENV === "production") return cached;
   // A blank value, like `GROQ_API_KEY=` in a copied .env.example, means "not set", not an invalid key.
   const parsed = envSchema.safeParse(
     Object.fromEntries(Object.entries(process.env).filter(([, value]) => value !== "")),

@@ -63,10 +63,15 @@ interface Container {
 }
 
 let container: Container | undefined;
+let containerSettings: string | undefined;
 
 export function getContainer(): Container {
-  if (container) return container;
   const env = getEnv();
+  // Rebuilt when the settings change, so an edited .env.local applies in development without a restart.
+  const settings = JSON.stringify(env);
+  if (container && settings === containerSettings) return container;
+  containerSettings = settings;
+
   const llm = createLLMProvider();
   const db = createDb();
   container = {
