@@ -29,6 +29,40 @@ describe("OpenAIProvider", () => {
     await expect(new OpenAIProvider(client, "m").classify("x")).rejects.toBeInstanceOf(LLMError);
   });
 
+  describe("when the provider rejects its own answer for missing the schema", () => {
+    const schemaMismatch = () =>
+      Object.assign(new Error("400 Generated JSON does not match the expected schema. Please adjust your prompt."), {
+        status: 400,
+      });
+
+    it("tries again and returns the answer that passes", async () => {
+      const client = stubClient({ parse: { output_parsed: { category: "question", confidence: 0.8 } } });
+      client.responses.parse.mockRejectedValueOnce(schemaMismatch()).mockRejectedValueOnce(schemaMismatch());
+
+      await expect(new OpenAIProvider(client, "m").classify("x")).resolves.toEqual({
+        category: "question",
+        confidence: 0.8,
+      });
+      expect(client.responses.parse).toHaveBeenCalledTimes(3);
+    });
+
+    it("gives up after three attempts with a user-safe error", async () => {
+      const client = stubClient({});
+      client.responses.parse.mockRejectedValue(schemaMismatch());
+
+      await expect(new OpenAIProvider(client, "m").classify("x")).rejects.toBeInstanceOf(LLMError);
+      expect(client.responses.parse).toHaveBeenCalledTimes(3);
+    });
+
+    it("doesn't retry any other error", async () => {
+      const client = stubClient({});
+      client.responses.parse.mockRejectedValue(Object.assign(new Error("400 Invalid model"), { status: 400 }));
+
+      await expect(new OpenAIProvider(client, "m").classify("x")).rejects.toBeInstanceOf(LLMError);
+      expect(client.responses.parse).toHaveBeenCalledTimes(1);
+    });
+  });
+
   it("returns the trimmed draft and fails on an empty one", async () => {
     const ok = stubClient({ create: { output_text: "  Pozdravljeni!  " } });
     await expect(new OpenAIProvider(ok, "m").draftReply({ message: "x", category: "praise" })).resolves.toBe(

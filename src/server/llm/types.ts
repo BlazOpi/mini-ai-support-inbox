@@ -23,7 +23,7 @@ export interface DraftReplyInput {
 
 /**
  * Provider-agnostic LLM port. The service layer only depends on this interface,
- * so swapping Claude ↔ OpenAI ↔ mock (tests, local dev) is a config change.
+ * so swapping Claude ↔ OpenAI ↔ Groq ↔ mock (tests, local dev) is a config change.
  */
 export interface LLMProvider {
   readonly name: string;

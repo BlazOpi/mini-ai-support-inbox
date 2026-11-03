@@ -8,6 +8,17 @@ import { classificationSchema, type Classification, type DraftReplyInput, type L
 
 export type OpenAIClient = Pick<OpenAI, "responses">;
 
+const CLASSIFY_ATTEMPTS = 3;
+
+/**
+ * Groq sometimes rejects its own model's answer with a 400 because it missed the schema. That's not
+ * a bad request: Groq's docs advise trying again, and the next attempt usually passes.
+ */
+function isSchemaMismatch(err: unknown): boolean {
+  const { status, message } = err as { status?: unknown; message?: unknown };
+  return status === 400 && typeof message === "string" && message.includes("does not match the expected schema");
+}
+
 /**
  * Alternative provider via the OpenAI Responses API — same prompts, same contract.
  * Also serves compatible APIs (Groq): pass a client with their base URL and a matching name.
@@ -20,20 +31,27 @@ export class OpenAIProvider implements LLMProvider {
   ) {}
 
   async classify(message: string): Promise<Classification> {
-    const res = await this.client.responses
-      .parse({
-        model: this.model,
-        instructions: CLASSIFY_SYSTEM_PROMPT,
-        input: buildClassifyPrompt(message),
-        text: { format: zodTextFormat(classificationSchema, "classification") },
-      })
-      .catch((err: unknown) => {
-        throw toLLMError(err);
-      });
+    const res = await this.requestClassification(message);
 
     const parsed = classificationSchema.safeParse(res.output_parsed);
     if (!parsed.success) throw new LLMError("AI je vrnil neveljavno klasifikacijo.", { cause: parsed.error });
     return parsed.data;
+  }
+
+  private async requestClassification(message: string) {
+    for (let attempt = 1; ; attempt++) {
+      try {
+        return await this.client.responses.parse({
+          model: this.model,
+          instructions: CLASSIFY_SYSTEM_PROMPT,
+          input: buildClassifyPrompt(message),
+          text: { format: zodTextFormat(classificationSchema, "classification") },
+        });
+      } catch (err) {
+        if (attempt < CLASSIFY_ATTEMPTS && isSchemaMismatch(err)) continue;
+        throw toLLMError(err);
+      }
+    }
   }
 
   async draftReply(input: DraftReplyInput): Promise<string> {
