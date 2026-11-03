@@ -1,3 +1,5 @@
+import { redactQueryParams } from "@/lib/redact-query-params";
+
 /**
  * Minimal structured logger (JSON lines → Vercel logs). Never log customer message bodies:
  * they are personal data. Log ids, statuses and error metadata instead.
@@ -6,7 +8,11 @@ type Level = "info" | "warn" | "error";
 
 function serializeError(err: unknown) {
   if (err instanceof Error) {
-    return { name: err.name, message: err.message, cause: err.cause instanceof Error ? err.cause.message : undefined };
+    return {
+      name: err.name,
+      message: redactQueryParams(err.message),
+      cause: err.cause instanceof Error ? redactQueryParams(err.cause.message) : undefined,
+    };
   }
   return { message: String(err) };
 }

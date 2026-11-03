@@ -1,4 +1,5 @@
 import type { BrowserOptions } from "@sentry/nextjs";
+import { redactQueryParams } from "./redact-query-params";
 
 type SentryDataCollection = NonNullable<BrowserOptions["dataCollection"]>;
 
@@ -17,19 +18,23 @@ export const dataCollection: SentryDataCollection = {
   stackFrameVariables: false,
 };
 
-/**
- * Defence in depth: strips personal data from Sentry events before they leave the app:
- * request bodies (customer messages), cookies, auth headers and IP addresses.
- * Shared by the browser and server Sentry configs.
- */
 interface ScrubbableEvent {
   request?: { data?: unknown; cookies?: unknown; headers?: Record<string, string> };
   user?: { ip_address?: string | null; email?: string };
+  exception?: { values?: { value?: string }[] };
 }
 
 const SENSITIVE_HEADERS = ["authorization", "cookie", "x-forwarded-for", "x-real-ip"];
 
+/**
+ * Defence in depth: strips personal data from Sentry events before they leave the app:
+ * request bodies (customer messages), cookies, auth headers, IP addresses and the query values
+ * inside database error messages. Shared by the browser and server Sentry configs.
+ */
 export function scrubEvent<T extends ScrubbableEvent>(event: T): T {
+  for (const exception of event.exception?.values ?? []) {
+    if (exception.value) exception.value = redactQueryParams(exception.value);
+  }
   if (event.request) {
     delete event.request.data;
     delete event.request.cookies;
