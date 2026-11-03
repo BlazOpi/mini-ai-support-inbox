@@ -2,7 +2,14 @@ import { and, asc, desc, eq, gt, inArray, notExists, or, sql, type SQL } from "d
 import { alias } from "drizzle-orm/pg-core";
 import type { Category, CategorySource, MessageStatus } from "@/lib/domain";
 import type { CreateMessageInput, ListMessagesQuery } from "@/lib/validation";
-import { messages, replies, type MessageRow, type ReplyRow } from "@/server/db/schema";
+import {
+  messageEvents,
+  messages,
+  replies,
+  type MessageEventRow,
+  type MessageRow,
+  type ReplyRow,
+} from "@/server/db/schema";
 import type { Database } from "@/server/db/types";
 
 export type MessageWithReply = MessageRow & { reply: ReplyRow | null };
@@ -19,6 +26,8 @@ export interface AiResult {
 /**
  * Data access only — no business rules. State-changing updates are conditional on the
  * current status (optimistic concurrency) and report whether a row was actually changed.
+ * Each change also adds a `message_events` row in the same transaction: if either write fails,
+ * neither is kept, so the history can't miss a change or record one that didn't happen.
  */
 export function createMessageRepository(db: Database) {
   const selectWithReply = () =>
@@ -29,17 +38,25 @@ export function createMessageRepository(db: Database) {
 
   return {
     async insert(input: CreateMessageInput & { threadId?: string }): Promise<MessageRow> {
-      const [row] = await db
-        .insert(messages)
-        .values({
-          threadId: input.threadId ?? null,
-          customerName: input.customerName ?? null,
-          customerEmail: input.customerEmail ?? null,
-          body: input.body,
-          status: "processing",
-        })
-        .returning();
-      return row;
+      return db.transaction(async (tx) => {
+        const [row] = await tx
+          .insert(messages)
+          .values({
+            threadId: input.threadId ?? null,
+            customerName: input.customerName ?? null,
+            customerEmail: input.customerEmail ?? null,
+            body: input.body,
+            status: "processing",
+          })
+          .returning();
+        await tx.insert(messageEvents).values({
+          messageId: row.id,
+          type: input.threadId ? "customer_replied" : "message_received",
+          actor: "customer",
+          newValue: input.body,
+        });
+        return row;
+      });
     },
 
     async findById(id: string): Promise<MessageWithReply | null> {
@@ -53,6 +70,20 @@ export function createMessageRepository(db: Database) {
         .where(or(eq(messages.id, threadId), eq(messages.threadId, threadId)))
         .orderBy(asc(messages.createdAt));
       return rows.map((r) => ({ ...r.message, reply: r.reply }));
+    },
+
+    /**
+     * A conversation's change log, oldest first. Changes can share a timestamp (`now()` is fixed per
+     * transaction), and sorting by type then keeps them in the order they happen: the enum's order.
+     */
+    async findThreadEvents(threadId: string): Promise<MessageEventRow[]> {
+      const rows = await db
+        .select({ event: messageEvents })
+        .from(messageEvents)
+        .innerJoin(messages, eq(messageEvents.messageId, messages.id))
+        .where(or(eq(messages.id, threadId), eq(messages.threadId, threadId)))
+        .orderBy(asc(messageEvents.createdAt), asc(messageEvents.type));
+      return rows.map((r) => r.event);
     },
 
     /** One row per conversation: its latest message, which is the one that needs attention. */
@@ -91,12 +122,22 @@ export function createMessageRepository(db: Database) {
     },
 
     async markFailed(id: string, aiError: string): Promise<void> {
-      await db.update(messages).set({ status: "failed", aiError }).where(eq(messages.id, id));
+      await db.transaction(async (tx) => {
+        await tx.update(messages).set({ status: "failed", aiError }).where(eq(messages.id, id));
+        await tx
+          .insert(messageEvents)
+          .values({ messageId: id, type: "ai_failed", actor: "ai", details: { error: aiError } });
+      });
     },
 
-    /** Stores classification + draft and moves the message to draft_ready in one transaction. */
+    /**
+     * Stores classification + draft and moves the message to draft_ready in one transaction.
+     * Regenerating overwrites the reply, so the text it replaces is kept in the history.
+     */
     async saveAiResult(id: string, result: AiResult): Promise<void> {
       await db.transaction(async (tx) => {
+        const [previous] = await tx.select({ body: replies.body }).from(replies).where(eq(replies.messageId, id));
+
         await tx
           .update(messages)
           .set({
@@ -119,16 +160,46 @@ export function createMessageRepository(db: Database) {
           .insert(replies)
           .values({ messageId: id, ...reply })
           .onConflictDoUpdate({ target: replies.messageId, set: reply });
+
+        await tx.insert(messageEvents).values({
+          messageId: id,
+          type: "ai_draft_created",
+          actor: "ai",
+          oldValue: previous?.body ?? null,
+          newValue: result.draft,
+          details: {
+            model: result.model,
+            promptVersion: result.promptVersion,
+            category: result.category,
+            confidence: result.categoryConfidence,
+          },
+        });
       });
     },
 
     async updateCategory(id: string, category: Category): Promise<boolean> {
-      const rows = await db
-        .update(messages)
-        .set({ category, categorySource: "human", categoryConfidence: null })
-        .where(and(eq(messages.id, id), inArray(messages.status, ["draft_ready", "failed"])))
-        .returning({ id: messages.id });
-      return rows.length > 0;
+      return db.transaction(async (tx) => {
+        const [locked] = await tx
+          .select({ category: messages.category })
+          .from(messages)
+          .where(and(eq(messages.id, id), inArray(messages.status, ["draft_ready", "failed"])))
+          .for("update");
+        if (!locked) return false;
+        await tx
+          .update(messages)
+          .set({ category, categorySource: "human", categoryConfidence: null })
+          .where(eq(messages.id, id));
+        if (locked.category !== category) {
+          await tx.insert(messageEvents).values({
+            messageId: id,
+            type: "category_changed",
+            actor: "agent",
+            oldValue: locked.category,
+            newValue: category,
+          });
+        }
+        return true;
+      });
     },
 
     async updateReplyBody(messageId: string, body: string): Promise<boolean> {
@@ -139,12 +210,19 @@ export function createMessageRepository(db: Database) {
           .where(eq(messages.id, messageId))
           .for("update");
         if (locked?.status !== "draft_ready") return false;
-        const rows = await tx
-          .update(replies)
-          .set({ body })
-          .where(eq(replies.messageId, messageId))
-          .returning({ id: replies.id });
-        return rows.length > 0;
+        const [current] = await tx.select({ body: replies.body }).from(replies).where(eq(replies.messageId, messageId));
+        if (!current) return false;
+        await tx.update(replies).set({ body }).where(eq(replies.messageId, messageId));
+        if (current.body !== body) {
+          await tx.insert(messageEvents).values({
+            messageId,
+            type: "reply_edited",
+            actor: "agent",
+            oldValue: current.body,
+            newValue: body,
+          });
+        }
+        return true;
       });
     },
 
@@ -157,7 +235,17 @@ export function createMessageRepository(db: Database) {
           .where(and(eq(messages.id, messageId), eq(messages.status, "draft_ready")))
           .returning({ id: messages.id });
         if (rows.length === 0) return false;
-        await tx.update(replies).set({ approvedAt: new Date() }).where(eq(replies.messageId, messageId));
+        const [reply] = await tx
+          .update(replies)
+          .set({ approvedAt: new Date() })
+          .where(eq(replies.messageId, messageId))
+          .returning({ body: replies.body });
+        await tx.insert(messageEvents).values({
+          messageId,
+          type: "reply_approved",
+          actor: "agent",
+          newValue: reply?.body ?? null,
+        });
         return true;
       });
     },

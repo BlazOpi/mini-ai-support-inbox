@@ -1,5 +1,19 @@
-import type { MessageDto } from "@/lib/domain";
+import type { MessageDto, MessageEventDto } from "@/lib/domain";
+import type { MessageEventRow } from "@/server/db/schema";
 import type { MessageWithReply } from "./repository";
+
+export function toMessageEventDto(row: MessageEventRow): MessageEventDto {
+  const error = row.details?.error;
+  return {
+    id: row.id,
+    type: row.type,
+    actor: row.actor,
+    oldValue: row.oldValue,
+    newValue: row.newValue,
+    error: typeof error === "string" ? error : null,
+    createdAt: row.createdAt.toISOString(),
+  };
+}
 
 /** Maps DB rows to the public API shape (ISO dates, derived `edited` flag). */
 export function toMessageDto(row: MessageWithReply): MessageDto {

@@ -12,6 +12,38 @@ export type MessageStatus = (typeof MESSAGE_STATUSES)[number];
 export const CATEGORY_SOURCES = ["ai", "human"] as const;
 export type CategorySource = (typeof CATEGORY_SOURCES)[number];
 
+/** What can happen to a message; each change adds one row to the `message_events` history table. */
+export const MESSAGE_EVENT_TYPES = [
+  "message_received",
+  "customer_replied",
+  "ai_draft_created",
+  "ai_failed",
+  "category_changed",
+  "reply_edited",
+  "reply_approved",
+] as const;
+export type MessageEventType = (typeof MESSAGE_EVENT_TYPES)[number];
+
+/** Who caused a change. There are no per-agent accounts yet, so every human action is "agent". */
+export const MESSAGE_EVENT_ACTORS = ["customer", "ai", "agent"] as const;
+export type MessageEventActor = (typeof MESSAGE_EVENT_ACTORS)[number];
+
+export const EVENT_LABELS: Record<MessageEventType, string> = {
+  message_received: "Sporočilo prejeto",
+  customer_replied: "Stranka je odgovorila",
+  ai_draft_created: "AI je pripravil osnutek",
+  ai_failed: "AI obdelava ni uspela",
+  category_changed: "Kategorija popravljena",
+  reply_edited: "Osnutek urejen",
+  reply_approved: "Odgovor potrjen",
+};
+
+export const ACTOR_LABELS: Record<MessageEventActor, string> = {
+  customer: "Stranka",
+  ai: "AI",
+  agent: "Agent",
+};
+
 export const CATEGORY_LABELS: Record<Category, string> = {
   question: "Vprašanje",
   complaint: "Pritožba",
@@ -35,7 +67,7 @@ export const LIMITS = {
   replyMax: 8000,
 } as const;
 
-export interface ReplyDto {
+interface ReplyDto {
   id: string;
   /** Original text produced by the LLM — kept to measure how much humans edit. */
   aiDraft: string;
@@ -63,6 +95,19 @@ export interface MessageDto {
   createdAt: string;
   updatedAt: string;
   reply: ReplyDto | null;
+}
+
+/** One entry of a conversation's change log. */
+export interface MessageEventDto {
+  id: string;
+  type: MessageEventType;
+  actor: MessageEventActor;
+  /** Text before and after the change, exactly as it was. */
+  oldValue: string | null;
+  newValue: string | null;
+  /** Why the AI step failed; only set on `ai_failed`, and always safe to show. */
+  error: string | null;
+  createdAt: string;
 }
 
 /** How many AI requests this client has left; the server's rate limiter is the source of truth. */

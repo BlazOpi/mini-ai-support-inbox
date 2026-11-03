@@ -1,10 +1,10 @@
-import type { Category, MessageDto, MessageStatus } from "@/lib/domain";
+import type { Category, MessageDto, MessageEventDto, MessageStatus } from "@/lib/domain";
 import type { CreateMessageInput, ListMessagesQuery } from "@/lib/validation";
 import { ConflictError, LLMError, NotFoundError } from "@/server/errors";
 import { PROMPT_VERSION } from "@/server/llm/prompts";
 import type { ConversationTurn, LLMProvider } from "@/server/llm/types";
 import { logger } from "@/server/logger";
-import { toMessageDto } from "./dto";
+import { toMessageDto, toMessageEventDto } from "./dto";
 import type { MessageRepository, MessageWithReply } from "./repository";
 
 /** A message stuck in `processing` this long (e.g. the function was killed) may be retried. */
@@ -98,6 +98,12 @@ export function createMessageService({ repo, llm, reportError = () => {}, now = 
     async getThread(id: string): Promise<MessageDto[]> {
       const message = await getOrThrow(id);
       return (await repo.findThread(message.threadId ?? message.id)).map(toMessageDto);
+    },
+
+    /** Every recorded change in the conversation the message belongs to, oldest first. */
+    async getHistory(id: string): Promise<MessageEventDto[]> {
+      const message = await getOrThrow(id);
+      return (await repo.findThreadEvents(message.threadId ?? message.id)).map(toMessageEventDto);
     },
 
     /** Saves the message, then classifies it and drafts a reply. Always returns the stored message. */

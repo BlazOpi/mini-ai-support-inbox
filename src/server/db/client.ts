@@ -5,9 +5,13 @@ import { getEnv } from "@/server/env";
 import * as schema from "./schema";
 
 /**
- * Single connection pool per server instance. On serverless (Vercel) each instance keeps
- * a tiny pool; use Supabase's transaction pooler URL (port 6543) for DATABASE_URL.
- * `prepare: false` is required by PgBouncer-style transaction poolers.
+ * One small connection pool per server instance. On Supabase, DATABASE_URL should be the
+ * transaction pooler (port 6543), which lends a server connection for one transaction at a time,
+ * so no query may rely on getting the same connection as the one before it:
+ * - `prepare: false`: a prepared statement exists on one connection only.
+ * - `max_pipeline: 1`: one query at a time per connection. Supabase warns that the default
+ *   pipelining can hang queries or mix up their results through this pooler. 0 is not an option
+ *   here: it breaks `sql.begin()`, which every write in this app uses.
  */
 const globalForDb = globalThis as unknown as { __inboxSql?: postgres.Sql };
 
@@ -17,6 +21,7 @@ export function createDb() {
     globalForDb.__inboxSql ??
     postgres(DATABASE_URL, {
       prepare: false,
+      max_pipeline: 1,
       max: NODE_ENV === "production" ? 3 : 5,
       idle_timeout: 20,
       connect_timeout: 10,

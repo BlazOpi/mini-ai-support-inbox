@@ -15,6 +15,13 @@
       "when": 1793652604940,
       "tag": "0001_conversation_threads",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1793734768086,
+      "tag": "0002_message_events",
+      "breakpoints": true
     }
   ]
 }

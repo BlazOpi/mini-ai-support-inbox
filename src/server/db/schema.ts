@@ -1,9 +1,28 @@
-import { index, pgEnum, pgTable, real, text, timestamp, uuid, varchar, type AnyPgColumn } from "drizzle-orm/pg-core";
-import { CATEGORIES, CATEGORY_SOURCES, MESSAGE_STATUSES } from "@/lib/domain";
+import {
+  index,
+  jsonb,
+  pgEnum,
+  pgTable,
+  real,
+  text,
+  timestamp,
+  uuid,
+  varchar,
+  type AnyPgColumn,
+} from "drizzle-orm/pg-core";
+import {
+  CATEGORIES,
+  CATEGORY_SOURCES,
+  MESSAGE_EVENT_ACTORS,
+  MESSAGE_EVENT_TYPES,
+  MESSAGE_STATUSES,
+} from "@/lib/domain";
 
 export const messageCategory = pgEnum("message_category", CATEGORIES);
 export const messageStatus = pgEnum("message_status", MESSAGE_STATUSES);
 export const categorySource = pgEnum("category_source", CATEGORY_SOURCES);
+export const messageEventType = pgEnum("message_event_type", MESSAGE_EVENT_TYPES);
+export const messageEventActor = pgEnum("message_event_actor", MESSAGE_EVENT_ACTORS);
 
 const timestamps = {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -14,8 +33,9 @@ const timestamps = {
 };
 
 /**
- * RLS is enabled without policies: the app connects as the table owner (bypasses RLS),
- * while Supabase's public Data API (anon / authenticated roles) gets no access at all.
+ * Every table enables RLS without adding policies. The app connects as the table owner, which
+ * RLS doesn't apply to, while Supabase's public Data API (the anon and authenticated roles) can
+ * read and change nothing. Without this, anyone with the project's public key could read messages.
  */
 export const messages = pgTable(
   "messages",
@@ -55,5 +75,29 @@ export const replies = pgTable("replies", {
   ...timestamps,
 }).enableRLS();
 
+/**
+ * History of every change to a message, written in the same transaction as the change, so the
+ * two can't disagree. `old_value` and `new_value` keep the text exactly as it was, so a replaced
+ * draft can still be read here. Rows are deleted with their message, so erasing a customer's
+ * message (GDPR) erases its history too.
+ */
+export const messageEvents = pgTable(
+  "message_events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    messageId: uuid("message_id")
+      .notNull()
+      .references(() => messages.id, { onDelete: "cascade" }),
+    type: messageEventType("type").notNull(),
+    actor: messageEventActor("actor").notNull(),
+    oldValue: text("old_value"),
+    newValue: text("new_value"),
+    details: jsonb("details").$type<Record<string, unknown>>(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("message_events_message_id_created_at_idx").on(t.messageId, t.createdAt)],
+).enableRLS();
+
 export type MessageRow = typeof messages.$inferSelect;
 export type ReplyRow = typeof replies.$inferSelect;
+export type MessageEventRow = typeof messageEvents.$inferSelect;
