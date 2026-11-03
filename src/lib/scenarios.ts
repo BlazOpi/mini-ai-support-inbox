@@ -5,7 +5,7 @@ import type { Category } from "./domain";
  * customer writes back. The text comes from templates, not from an LLM; every message then goes
  * through the normal flow. All customers are made up and use the reserved example.com domain.
  */
-export interface ScenarioTurn {
+interface ScenarioTurn {
   text: string;
   /** What the rule-based mock provider must return. A real model may reasonably disagree. */
   expectedCategory: Category;

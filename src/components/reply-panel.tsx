@@ -8,11 +8,9 @@ import { CATEGORIES, CATEGORY_LABELS, LIMITS, type Category, type MessageDto } f
 import { formatConfidence, formatDateTime } from "@/lib/format";
 import { AiLoadingOverlay, AiQuotaCounter, Spinner, useAiQuota } from "./ai-status";
 import { CategoryBadge } from "./badges";
+import { buttonClass, cardClass, ErrorMessage, sectionTitleClass, textareaClass } from "./ui";
 
 type Action = "save" | "approve" | "process" | "category" | null;
-
-const button =
-  "inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium shadow-sm transition disabled:cursor-not-allowed disabled:opacity-50";
 
 /**
  * Human-in-the-loop controls for one message. The parent re-mounts this component
@@ -71,10 +69,10 @@ export function ReplyPanel({ message }: { message: MessageDto }) {
   }
 
   return (
-    <div className="space-y-5">
-      {/* Classification */}
-      <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">Klasifikacija</h2>
+    <div className="space-y-5" data-chat-busy={busy !== null ? "" : undefined}>
+      {/* The AI's category, which an agent can correct until the reply is approved. */}
+      <section className={cardClass}>
+        <h2 className={`mb-3 ${sectionTitleClass}`}>Klasifikacija</h2>
         <div className="flex flex-wrap items-center gap-3">
           <CategoryBadge category={message.category} />
           {message.categorySource === "ai" && message.categoryConfidence !== null && (
@@ -105,10 +103,10 @@ export function ReplyPanel({ message }: { message: MessageDto }) {
         </div>
       </section>
 
-      {/* Reply */}
-      <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+      {/* The reply: an editable draft until it's approved, then read-only with a copy button. */}
+      <section className={cardClass}>
         <div className="mb-3 flex flex-wrap items-center gap-2">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+          <h2 className={sectionTitleClass}>
             {message.status === "approved" ? "Potrjen odgovor" : "Predlog odgovora"}
           </h2>
           {message.reply?.edited && (
@@ -147,7 +145,11 @@ export function ReplyPanel({ message }: { message: MessageDto }) {
               {message.reply.body}
             </p>
             <div className="flex items-center gap-3">
-              <button type="button" onClick={copy} className={`${button} bg-slate-900 text-white hover:bg-slate-700`}>
+              <button
+                type="button"
+                onClick={copy}
+                className={`${buttonClass} bg-slate-900 text-white hover:bg-slate-700`}
+              >
                 {copied ? "Kopirano ✓" : "Kopiraj odgovor"}
               </button>
               {message.reply.approvedAt && (
@@ -161,12 +163,13 @@ export function ReplyPanel({ message }: { message: MessageDto }) {
               <div className="relative flex">
                 <textarea
                   aria-label="Besedilo odgovora"
-                  className="min-h-64 w-full resize-y rounded-md border border-slate-300 p-3 text-sm leading-relaxed shadow-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 disabled:bg-slate-50"
+                  className={`${textareaClass} min-h-64`}
                   value={draft}
                   onChange={(e) => setDraft(e.target.value)}
                   disabled={!editable || busy !== null}
                 />
                 {generating && <AiLoadingOverlay label="AI pripravlja nov odgovor…" />}
+                {busy === "approve" && <AiLoadingOverlay label="Potrjujem odgovor…" />}
               </div>
               <p className={`mt-1 text-right text-xs ${tooLong ? "text-rose-600" : "text-slate-400"}`}>
                 {draft.length} / {LIMITS.replyMax}
@@ -175,11 +178,7 @@ export function ReplyPanel({ message }: { message: MessageDto }) {
           )
         )}
 
-        {error && (
-          <p role="alert" className="mt-3 rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-700 ring-1 ring-rose-200">
-            {error}
-          </p>
-        )}
+        {error && <ErrorMessage className="mt-3">{error}</ErrorMessage>}
 
         {message.status !== "approved" && (
           <div className="mt-4 flex flex-wrap gap-2">
@@ -189,15 +188,23 @@ export function ReplyPanel({ message }: { message: MessageDto }) {
                   type="button"
                   onClick={approve}
                   disabled={busy !== null || tooLong || !draft.trim()}
-                  className={`${button} bg-emerald-600 text-white hover:bg-emerald-500`}
+                  className={`${buttonClass} bg-emerald-600 text-white hover:bg-emerald-500`}
                 >
-                  {busy === "approve" ? "Potrjujem…" : dirty ? "Shrani in potrdi" : "Potrdi odgovor"}
+                  {busy === "approve" ? (
+                    <>
+                      <Spinner /> Potrjujem…
+                    </>
+                  ) : dirty ? (
+                    "Shrani in potrdi"
+                  ) : (
+                    "Potrdi odgovor"
+                  )}
                 </button>
                 <button
                   type="button"
                   onClick={save}
                   disabled={busy !== null || !dirty || tooLong || !draft.trim()}
-                  className={`${button} bg-white text-slate-700 ring-1 ring-slate-300 hover:bg-slate-50`}
+                  className={`${buttonClass} bg-white text-slate-700 ring-1 ring-slate-300 hover:bg-slate-50`}
                 >
                   {busy === "save" ? "Shranjujem…" : "Shrani osnutek"}
                 </button>
@@ -206,7 +213,7 @@ export function ReplyPanel({ message }: { message: MessageDto }) {
                     type="button"
                     onClick={() => setDraft(message.reply?.body ?? "")}
                     disabled={busy !== null}
-                    className={`${button} bg-white text-slate-500 shadow-none hover:text-slate-800`}
+                    className={`${buttonClass} bg-white text-slate-500 shadow-none hover:text-slate-800`}
                   >
                     Zavrzi spremembe
                   </button>
@@ -218,7 +225,7 @@ export function ReplyPanel({ message }: { message: MessageDto }) {
               onClick={regenerate}
               disabled={busy !== null || dirty || waitLabel !== null}
               title={dirty ? "Najprej shrani ali zavrzi spremembe." : undefined}
-              className={`${button} ml-auto bg-white text-indigo-700 ring-1 ring-indigo-200 hover:bg-indigo-50`}
+              className={`${buttonClass} ml-auto bg-white text-indigo-700 ring-1 ring-indigo-200 hover:bg-indigo-50`}
             >
               {generating ? (
                 <>

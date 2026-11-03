@@ -7,6 +7,7 @@ import { ApiError, api } from "@/lib/api-client";
 import { CATEGORIES, CATEGORY_LABELS, LIMITS, type MessageDto } from "@/lib/domain";
 import { pickScenario, SCENARIOS, SCENARIOS_ENABLED, startScenario, type Scenario } from "@/lib/scenarios";
 import { AiLoadingOverlay, AiQuotaCounter, Spinner, useAiQuota } from "./ai-status";
+import { ErrorMessage } from "./ui";
 
 const EMPTY = { customerName: "", customerEmail: "", body: "" };
 
@@ -124,11 +125,7 @@ export function NewMessageForm() {
         </p>
       </Field>
 
-      {error && (
-        <p role="alert" className="rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-700 ring-1 ring-rose-200">
-          {error}
-        </p>
-      )}
+      {error && <ErrorMessage>{error}</ErrorMessage>}
 
       <button
         type="submit"

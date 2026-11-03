@@ -96,13 +96,3 @@ export function MessageList({ messages, filtered }: { messages: MessageDto[]; fi
     </ul>
   );
 }
-
-export function MessageListSkeleton() {
-  return (
-    <div className="space-y-2" aria-busy="true" aria-label="Nalagam sporočila">
-      {Array.from({ length: 4 }, (_, i) => (
-        <div key={i} className="h-20 animate-pulse rounded-lg bg-slate-200/70" />
-      ))}
-    </div>
-  );
-}

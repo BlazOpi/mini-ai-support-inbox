@@ -29,12 +29,10 @@ export const updateReplySchema = z.object({
     .min(1, "Odgovor ne sme biti prazen.")
     .max(LIMITS.replyMax, `Odgovor ima lahko največ ${LIMITS.replyMax} znakov.`),
 });
-export type UpdateReplyInput = z.infer<typeof updateReplySchema>;
 
 export const updateCategorySchema = z.object({
   category: z.enum(CATEGORIES, { error: "Neveljavna kategorija." }),
 });
-export type UpdateCategoryInput = z.infer<typeof updateCategorySchema>;
 
 export const listMessagesQuerySchema = z.object({
   category: z.enum(CATEGORIES).optional().catch(undefined),

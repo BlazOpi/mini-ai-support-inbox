@@ -36,18 +36,18 @@ export function errorResponse(err: unknown, report?: (err: unknown) => void): Ne
 export function assertSameOrigin(request: Request) {
   if (request.method === "GET" || request.method === "HEAD") return;
   const origin = request.headers.get("origin");
-  if (!origin) return; // non-browser clients (curl, server-to-server)
+  if (!origin) return; // no Origin means no browser (curl, server-to-server), and CSRF needs a browser
   const host = request.headers.get("x-forwarded-host") ?? request.headers.get("host");
   let originHost: string | null = null;
   try {
     originHost = new URL(origin).host;
   } catch {
-    // fall through — invalid Origin header
+    // An Origin that can't be parsed leaves originHost null, so the check below rejects it.
   }
   if (!host || originHost !== host) throw new ForbiddenError("Zahteva iz nedovoljenega izvora.");
 }
 
-/** Reads and validates a JSON body with a size cap. */
+/** Reads and validates a JSON body. The size is checked twice because Content-Length can be missing or wrong. */
 export async function parseJsonBody<S extends z.ZodType>(request: Request, schema: S): Promise<z.infer<S>> {
   const length = Number(request.headers.get("content-length") ?? 0);
   if (length > MAX_BODY_BYTES) throw new PayloadTooLargeError();
@@ -77,7 +77,7 @@ export function parseWith<S extends z.ZodType>(schema: S, data: unknown): z.infe
   return result.data;
 }
 
-export function clientKey(request: Request): string {
+function clientKey(request: Request): string {
   const forwarded = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
   return forwarded || request.headers.get("x-real-ip") || "unknown";
 }

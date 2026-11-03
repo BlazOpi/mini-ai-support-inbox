@@ -5,7 +5,7 @@ import { json, parseJsonBody } from "@/server/http";
 
 type Ctx = RouteContext<"/api/messages/[id]">;
 
-/** GET /api/messages/:id */
+/** GET /api/messages/:id — one message with its reply; 404 if it doesn't exist. */
 export const GET = apiHandler<Ctx>(async (_request, ctx) => {
   const id = await messageIdFrom(ctx);
   return json({ data: await getContainer().messageService.get(id) });

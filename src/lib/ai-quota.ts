@@ -40,13 +40,13 @@ export function createAiQuotaStore({
     const id = ++latestRefresh;
     try {
       const next = await fetchQuota();
-      if (id !== latestRefresh) return; // a newer refresh is on its way
+      if (id !== latestRefresh) return; // a newer refresh has started, and its answer is the fresher one
       resetAt = now() + next.resetInSeconds * 1000;
       clearInterval(timer);
       timer = next.resetInSeconds > 0 ? setInterval(tick, 1000) : undefined;
       publish(next);
     } catch {
-      // Keep the last known value.
+      // A stale number is better than none, and a missed refresh can't let extra requests through.
     }
   }
 
