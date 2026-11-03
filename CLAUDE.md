@@ -14,6 +14,7 @@ Next.js 16 App Router (Cache Components on), TypeScript strict, Drizzle + Postgr
 - Everything under `src/server` is server-only. `src/lib` must stay importable from the browser.
 - Validate all input with zod schemas from `src/lib/validation.ts`; throw `AppError` subclasses, never raw errors with internals.
 - Persist before calling the LLM; AI failures set `status=failed` with a user-safe message.
+- Every change to a message adds a `message_events` row in the same transaction (see `repository.ts`).
 - Customer text is untrusted: keep it inside `<customer_message>` delimiters (see `prompts.ts`). Never log it or send it to Sentry.
 - Bump `PROMPT_VERSION` when changing prompts.
 
@@ -21,4 +22,4 @@ Next.js 16 App Router (Cache Components on), TypeScript strict, Drizzle + Postgr
 
 - `npm run dev` · `npm test` · `npm run typecheck` · `npm run lint`
 - `npm run db:generate` after schema changes, `npm run db:migrate` to apply.
-- `npm run db:local` runs Postgres without Docker (embedded-postgres on port 5432, applies migrations itself).
+- `npm run db:supabase-sql` after a new migration or a change to `supabase/seed.sql` (a test fails if `supabase/setup.sql` is stale).

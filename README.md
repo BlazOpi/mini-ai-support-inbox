@@ -2,55 +2,88 @@
 
 Spletna aplikacija za obdelavo sporočil strank. **AI razvrsti sporočilo in pripravi predlog odgovora, človek ga uredi in potrdi.**
 
-**Demo:** _<povezava do Vercel deploya>_ · Basic Auth podatki so v e-pošti.
-
 ![Inbox](docs/screenshot-inbox.png)
 
-## Funkcionalnosti
+## Kaj zna
 
 - **Vnos sporočila stranke** (ime, e-pošta, besedilo) z validacijo na clientu in serverju
 - **AI klasifikacija**: `vprašanje | pritožba | pohvala | drugo` + zanesljivost (structured output, JSON schema)
 - **Predlog odgovora z LLM**: ton glede na kategorijo, odgovor v jeziku stranke, brez izmišljenih dejstev (manjkajoči podatki ostanejo kot `[placeholder]`)
-- **Shranjevanje** sporočil in odgovorov v PostgreSQL (Supabase)
-- **Zgodovina** s filtri po kategoriji in statusu
 - **Urejanje in potrditev odgovora**: po potrditvi je odgovor zaklenjen, original AI osnutka ostane shranjen
-- Ročni popravek kategorije (ponovno generiranje upošteva človekovo odločitev)
-- Ponovno generiranje osnutka ali ponovitev obdelave, če AI pade
+- **Pogovori**: stranka lahko odgovori, AI pa pripravi naslednji osnutek s kontekstom prejšnjih sporočil
+- **Zgodovina sprememb**: vsaka sprememba je zapisana v bazi in vidna na strani sporočila
+- **Filtri** po kategoriji in statusu, ročni popravek kategorije, ponovno generiranje osnutka
+- **Zaščita pred preveč zahtevami**: števec preostalih AI zahtev, zaklenjeni gumbi med obdelavo
 - **Sentry**: produkcijske napake (client + server), sledenje LLM klicem, brez osebnih podatkov
 
 ![Podrobnosti](docs/screenshot-detail.png)
 
-## Hiter zagon (lokalno)
+## Hiter zagon
 
-Potrebuješ Node.js 22+ in PostgreSQL (lokalni ali Supabase).
+Potrebuješ Node.js 22+ in brezplačen projekt na [Supabase](https://supabase.com).
 
-```bash
-npm install
-cp .env.example .env.local        # DATABASE_URL + (neobvezno) ANTHROPIC_API_KEY
-docker compose up -d              # lokalni Postgres (ali uporabi Supabase URL)
-npm run db:migrate                # ustvari tabele
-npm run dev                       # http://localhost:3000
+1. Nameščanje in nastavitve:
+   ```bash
+   npm install
+   cp .env.example .env.local
+   ```
+2. V Supabase odpri **SQL Editor**, prilepi celotno datoteko [`supabase/setup.sql`](supabase/setup.sql) in klikni **Run**. Ustvari tabele, vklopi zaščito RLS in naloži demo tickete.
+3. V `.env.local` nastavi `DATABASE_URL` (glej spodaj).
+4. Zaženi aplikacijo in odpri <http://localhost:3000>:
+   ```bash
+   npm run dev
+   ```
+
+Brez AI ključa aplikacija uporabi **mock provider** (pravila po ključnih besedah), zato cel tok deluje tudi brez AI računa. Z `GROQ_API_KEY`, `ANTHROPIC_API_KEY` ali `OPENAI_API_KEY` se samodejno vklopi pravi model. [Groq](https://console.groq.com) ima brezplačen paket, primeren za preizkus.
+
+### Povezava s Supabase
+
+Vse nastavitve so v eni vrstici v `.env.local`, ki je git ne shranjuje:
+
+```
+DATABASE_URL=postgresql://postgres.PROJECT-REF:GESLO@HOST:6543/postgres?sslmode=require
 ```
 
-**Brez Dockerja:** namesto `docker compose up -d` in `npm run db:migrate` v ločenem terminalu zaženi `npm run db:local` (pravi PostgreSQL 16 iz npm paketa `embedded-postgres`). Tabele ustvari sam, podatke pa hrani v `.pgdata/`.
+Vrednosti najdeš v Supabase pod **Connect → Direct → Transaction pooler**:
 
-Brez API ključa aplikacija uporabi **mock LLM provider** (deterministična pravila po ključnih besedah). Tako cel tok deluje offline, v UI pa piše `mock/mock-v1`. Z `ANTHROPIC_API_KEY` (ali `OPENAI_API_KEY`, `GROQ_API_KEY`) se samodejno vklopi pravi model. [Groq](https://console.groq.com) ima brezplačen paket, primeren za preizkus.
+| Del                | Vrednost                                                                         |
+| ------------------ | -------------------------------------------------------------------------------- |
+| Uporabnik          | `postgres.PROJECT-REF`                                                           |
+| Geslo              | geslo baze, **ne** API ključ. Posebne znake zapiši URL-kodirano (`$` kot `%24`). |
+| Host               | se konča s `pooler.supabase.com`                                                 |
+| Port               | `6543`. Neposredna povezava (`db.…supabase.co:5432`) je privzeto samo IPv6.      |
+| `?sslmode=require` | dodaj sam na konec, da povezava brez šifriranja ni mogoča                        |
 
-V razvojnem načinu ima obrazec še **testne scenarije** (`src/lib/scenarios.ts`): en klik ustvari izmišljeno stranko in njeno sporočilo, ga pošlje skozi običajen tok in odpre pripravljen odgovor. Ko odgovor potrdiš, z gumbom _Generiraj odgovor stranke_ stranka odpiše in AI pripravi naslednji odgovor, dokler se scenarij ne konča. Med scenariji je tudi poskus manipulacije AI (prompt injection).
+Aplikacija se z bazo povezuje neposredno, zato ključev Supabase (Publishable, Secret) in paketa `@supabase/supabase-js` ne potrebuje.
+
+### Ukazi
 
 | Ukaz                                 | Opis                                                                              |
 | ------------------------------------ | --------------------------------------------------------------------------------- |
-| `npm test`                           | Unit + integracijski testi (Vitest, servis teče proti pravemu Postgresu v PGlite) |
+| `npm run dev`                        | razvojni strežnik                                                                 |
+| `npm test`                           | testi (Vitest, servis teče proti pravemu Postgresu v PGlite)                      |
 | `npm run typecheck` / `npm run lint` | TypeScript strict / ESLint                                                        |
+| `npm run format`                     | Prettier                                                                          |
 | `npm run db:generate`                | nova migracija po spremembi sheme                                                 |
 | `npm run db:migrate`                 | aplicira migracije iz `drizzle/`                                                  |
-| `npm run db:local`                   | Postgres brez Dockerja, tabele ustvari sam, podatki v `.pgdata/`                  |
+| `npm run db:supabase-sql`            | po novi migraciji ali spremembi demo podatkov na novo zgradi `supabase/setup.sql` |
+| `npm run db:studio`                  | Drizzle Studio za pregled podatkov                                                |
+
+V razvojnem načinu ima obrazec še **testne scenarije** ([`src/lib/scenarios.ts`](src/lib/scenarios.ts)): en klik ustvari izmišljeno stranko in njeno sporočilo. Ko odgovor potrdiš, z gumbom _Generiraj odgovor stranke_ stranka odpiše. Med scenariji je tudi poskus manipulacije AI (prompt injection).
+
+### Demo podatki
+
+`supabase/setup.sql` doda 8 izmišljenih pogovorov. Dodaš jih lahko tudi kasneje s [`supabase/seed.sql`](supabase/seed.sql), pred uporabo s pravimi strankami pa jih odstrani:
+
+```sql
+delete from messages where id::text like '10000000-%';
+```
 
 ### Deploy (Vercel + Supabase + Sentry)
 
-1. **Supabase**: ustvari projekt. Pod _Connect_ kopiraj **Transaction pooler** URL (port 6543) za `DATABASE_URL` in **Session pooler/Direct** URL za `DATABASE_MIGRATION_URL`. Nato lokalno zaženi `npm run db:migrate`.
+1. **Supabase**: pripravi bazo kot zgoraj. Za bazo brez demo podatkov namesto `setup.sql` zaženi `npm run db:migrate`, z **Session pooler** URL-jem (port 5432) v `DATABASE_MIGRATION_URL`.
 2. **Sentry**: ustvari Next.js projekt in kopiraj DSN (`NEXT_PUBLIC_SENTRY_DSN`). Za source mape dodaj še `SENTRY_ORG`, `SENTRY_PROJECT` in `SENTRY_AUTH_TOKEN`.
-3. **Vercel**: uvozi GitHub repozitorij in nastavi env spremenljivke iz `.env.example` (`DATABASE_URL`, `ANTHROPIC_API_KEY`, `BASIC_AUTH_USER`, `BASIC_AUTH_PASSWORD`, Sentry). Nato deploy.
+3. **Vercel**: uvozi GitHub repozitorij in nastavi env spremenljivke iz `.env.example`: `DATABASE_URL`, ključ AI ponudnika, Sentry in nujno `BASIC_AUTH_USER` ter `BASIC_AUTH_PASSWORD`, sicer je aplikacija javno dostopna.
 4. Preveri: `GET /api/health` vrne `{"status":"ok","database":"ok"}`.
 
 ## Arhitektura
@@ -94,13 +127,21 @@ stateDiagram-v2
   approved --> [*]
 ```
 
-**Podatkovni model:** `messages` (besedilo, kategorija, zanesljivost, vir kategorije `ai|human`, status, napaka) in `replies` (1:1, `ai_draft` = original LLM, `body` = trenutna verzija, `model`, `prompt_version`, `approved_at`).
+**Podatkovni model:**
+
+| Tabela           | Vsebina                                                                                        |
+| ---------------- | ---------------------------------------------------------------------------------------------- |
+| `messages`       | besedilo, kategorija, zanesljivost, vir kategorije `ai\|human`, status, napaka, `thread_id`    |
+| `replies`        | 1:1 s sporočilom; `ai_draft` = original LLM, `body` = trenutna verzija, `model`, `approved_at` |
+| `message_events` | zgodovina sprememb: `type`, `actor` (`customer\|ai\|agent`), `old_value`, `new_value`          |
+
+Vrstica v `message_events` se zapiše v isti transakciji kot sprememba, zato zgodovina ne more izpustiti spremembe ali zabeležiti neuspele. Ob brisanju sporočila se izbriše tudi njegova zgodovina. Agenti še nimajo svojih računov, zato je vsak človek zabeležen kot `agent`.
 
 ### Ključne odločitve
 
 - **Sporočilo se shrani pred klicem LLM-ja.** Če AI pade (timeout, 429, neveljaven output), podatki niso izgubljeni: status je `failed`, uporabnik vidi razlog in gumb »Ponovi«. API vseeno vrne `201`, ker je bil vir ustvarjen.
 - **Structured outputs + ponovna zod validacija.** Klasifikacija je omejena na JSON shemo z enumom, rezultat se še enkrat preveri. Modelu ne zaupamo na slepo.
-- **Dva ločena LLM klica** (klasifikacija → osnutek): osnutek dobi kategorijo kot kontekst (ton), klasifikacija pa ostane poceni in hitra (`claude-haiku-5-5`, `effort: low`).
+- **Dva ločena LLM klica** (klasifikacija → osnutek): osnutek dobi kategorijo kot kontekst (ton), klasifikacija pa ostane poceni in hitra.
 - **Človek v zanki:** AI nikoli ne pošlje odgovora sam. Ročni popravek kategorije ima prednost pri ponovnem generiranju.
 - **Original AI osnutka se hrani** (`ai_draft` ≠ `body`), tako se da meriti, koliko ljudje popravljajo AI. To je osnova za evals in izboljšave promptov (`prompt_version`).
 - **Konsistenca:** prehodi stanj so pogojni UPDATE-i (`WHERE status = 'draft_ready'`), zato dvojna potrditev ali urejanje po potrditvi ni možno niti ob sočasnih zahtevah (`409 Conflict`). Sporočilo, ki obvisi v `processing` (npr. ubit serverless proces), se po 2 min lahko ponovno obdela.
@@ -118,6 +159,7 @@ stateDiagram-v2
 | `POST`  | `/api/messages/:id/approve`              | potrditev odgovora                                               |
 | `POST`  | `/api/messages/:id/process`              | ponovi obdelavo / ponovno generiraj                              |
 | `POST`  | `/api/messages/:id/customer-reply`       | `{ body }`: odgovor stranke, nadaljuje pogovor                   |
+| `GET`   | `/api/ai-quota`                          | preostale AI zahteve tega odjemalca                              |
 | `GET`   | `/api/health`                            | stanje aplikacije in baze                                        |
 
 Napake imajo enotno obliko `{ "error": { "code": "...", "message": "..." } }` in ustrezne kode `400/403/404/409/413/429/500`.
@@ -129,28 +171,29 @@ Napake imajo enotno obliko `{ "error": { "code": "...", "message": "..." } }` in
 - **XSS**: vsebina strank se izpisuje samo kot tekst (React escaping, brez `dangerouslySetInnerHTML`)
 - **Prompt injection**: besedilo stranke je med ločili `<customer_message>`, ki jih stranka ne more zapreti. Model dobi navodilo, naj ga obravnava kot podatke, output je omejen na shemo, človek vedno potrdi.
 - **Skrivnosti** samo na serverju (`server-only`, env validacija z zod)
-- **Rate limit** na AI endpointih (privzeto 10/min/IP, `RATE_LIMIT_AI_PER_MINUTE`) z `Retry-After`; UI prek `GET /api/ai-quota` pokaže števec preostalih zahtev in zaklene AI gumbe, ko jih zmanjka
+- **Rate limit** na AI endpointih (privzeto 10/min/IP, `RATE_LIMIT_AI_PER_MINUTE`) z `Retry-After`
 - **CSRF**: preverjanje `Origin` pri mutacijah + JSON telo (CORS preflight)
 - **Dostop**: HTTP Basic Auth (Next.js `proxy.ts`, primerjava v konstantnem času) za demo
-- **Supabase RLS** vklopljen na obeh tabelah (brez politik): javni Data API nima dostopa, aplikacija dostopa kot lastnik tabel
+- **Supabase RLS** vklopljen na vseh tabelah (brez politik): javni Data API nima dostopa, aplikacija dostopa kot lastnik tabel
 - **Security headerji** (`X-Frame-Options`, `nosniff`, `Referrer-Policy`, osnovni CSP)
-- **Zasebnost v Sentryju**: brez teles zahtev, piškotkov, IP-jev, DB parametrov in LLM promptov/odgovorov
+- **Zasebnost v logih in Sentryju**: brez teles zahtev, piškotkov, IP-jev, vrednosti SQL poizvedb in LLM promptov/odgovorov
 
 ## Obravnava napak in observability
 
 - Hierarhija napak (`ValidationError`, `NotFoundError`, `ConflictError`, `RateLimitError`, `LLMError` …) → enoten JSON odgovor
 - Napake SDK-jev (timeout, 401, 429, 5xx) se preslikajo v razumljiva sporočila. LLM klici imajo timeout (20 s) in 2 retryja z backoffom (SDK).
 - `error.tsx` / `global-error.tsx` / `not-found.tsx` v UI, napake se pošljejo v Sentry
-- **Sentry**: `instrumentation.ts` (server, `onRequestError`), `instrumentation-client.ts` (browser), tunnel route proti ad-blockerjem, source mapi ob buildu. LLM klici so instrumentirani (`instrumentAnthropicAiClient`): model, latenca in tokeni, brez vsebine.
+- **Sentry**: `instrumentation.ts` (server, `onRequestError`), `instrumentation-client.ts` (browser), tunnel route proti ad-blockerjem, source mapi ob buildu. LLM klici so instrumentirani: model, latenca in tokeni, brez vsebine.
 - Strukturirani JSON logi brez osebnih podatkov (`ai.processed`, `ai.failed` z `messageId`, `stage`, `durationMs`)
 
 ## Testi
 
-`npm test` → 29 testov:
+`npm test` pokrije:
 
-- **Servis** (integracijski, pravi Postgres prek PGlite + produkcijske migracije): celoten tok, AI napaka → `failed` → retry, sledenje urejanju, zaklep po potrditvi, ohranjanje ročne kategorije, obnovitev zastarelega `processing`, filtri
+- **Servis** (integracijski, pravi Postgres prek PGlite + produkcijske migracije): celoten tok, AI napaka → `failed` → retry, pogovori, zgodovina sprememb, zaklep po potrditvi, ohranjanje ročne kategorije, obnovitev zastarelega `processing`, filtri
+- **Supabase setup**: `setup.sql` ustreza migracijam, javna vloga ne vidi ničesar, demo podatki delujejo v aplikaciji
 - **LLM provider**: validacija structured outputa, zavrnitve, preslikava napak, ignoriranje thinking blokov
-- **Prompt injection** zaščita, rate limiter, validacijske sheme
+- **Prompt injection** zaščita, rate limiter, števec zahtev, validacijske sheme, zasebnost logov
 
 ## Uporaba AI orodij pri razvoju
 
@@ -161,15 +204,15 @@ Napake imajo enotno obliko `{ "error": { "code": "...", "message": "..." } }` in
   4. Next.js 16 ima precej novosti (Cache Components, `proxy.ts` namesto middleware). Agent je bral dokumentacijo, ki je priložena paketu (`AGENTS.md`), namesto da bi se zanašal na zastarelo znanje.
 - **`CLAUDE.md`** v repozitoriju opisuje arhitekturna pravila za nadaljnje delo z AI agenti.
 - Moja vloga: odločitve o arhitekturi in obsegu, pregled kode, preverjanje robnih primerov.
-- **V produktu**: Claude Haiku 5.5 (hiter in poceni za klasifikacijo/kratke odgovore), structured outputs, verzioniranje promptov.
+- **V produktu**: structured outputs, verzioniranje promptov, zamenljiv ponudnik (Claude, OpenAI, Groq).
 
 ## Kaj bi še izboljšal
 
 1. **Asinhrona obdelava**: queue (npr. Vercel Queues/Inngest) in streaming osnutka (SSE) namesto sinhronega klica (~2–4 s)
-2. **Avtentikacija in vloge** (Supabase Auth/SSO) + audit log (kdo je urejal/potrdil)
+2. **Avtentikacija in vloge** (Supabase Auth/SSO), da zgodovina sprememb pokaže, kateri agent je urejal/potrdil
 3. **Evals**: zlati nabor sporočil za klasifikacijo v CI, metrika »edit distance« med `ai_draft` in potrjenim odgovorom po verziji prompta
 4. **RAG nad bazo znanja/FAQ**, da osnutki vsebujejo prava dejstva namesto placeholderjev
-5. **Integracija z e-pošto/helpdeskom**: inbound webhook, pošiljanje potrjenega odgovora, niti pogovorov
+5. **Integracija z e-pošto/helpdeskom**: inbound webhook, pošiljanje potrjenega odgovora
 6. **Porazdeljen rate limit** (Redis/Upstash), ker je trenutni per-instance
 7. Paginacija s kursorjem, iskanje (Postgres full-text), prioritizacija/sentiment
 8. Strožji CSP z nonce, Playwright E2E testi v CI, redakcija PII pred pošiljanjem LLM-ju
